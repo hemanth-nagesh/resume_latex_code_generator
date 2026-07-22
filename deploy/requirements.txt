@@ -1,0 +1,31 @@
+# Resume AI Builder — Python Dependencies
+# Install: pip install -r requirements.txt
+# Or use pyproject.toml with: pip install -e ".[dev]"
+
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# AI / LLM
+google-genai>=1.14.0
+
+# Database
+asyncpg>=0.30.0
+
+# LangGraph (DAG pipeline)
+langgraph>=0.3.0
+langgraph-checkpoint-postgres>=2.0.0
+
+# Azure
+azure-storage-blob[aio]>=12.24.0
+
+# Dev & testing
+pytest>=8.3.0
+pytest-asyncio>=0.25.0
+httpx>=0.28.0
+python-dotenv>=1.0.0
+
+# core tools
+pdflatex>=0.1.3

@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/index.tsx","./src/vite-env.d.ts","./src/components/adminpanel.tsx","./src/components/loginpage.tsx","./src/hooks/usecache.ts","./src/hooks/usesse.ts","./src/services/admin.ts","./src/services/api.ts","./src/services/auth.ts","./src/services/cache.ts","./src/services/sessionkey.ts","./src/types/admin.ts","./src/types/index.ts"],"version":"5.9.3"}

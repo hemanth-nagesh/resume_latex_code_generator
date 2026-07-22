@@ -1,0 +1,60 @@
+# =============================================================================
+# Resume AI Builder — Docker Compose (Azure Cloud Edition)
+# =============================================================================
+# PostgreSQL is now hosted on Azure CosmosDB for PostgreSQL — no local db container.
+# Only the server and client run locally. All data goes to Azure.
+#
+# Start:  docker compose up
+# Stop:   docker compose down
+# =============================================================================
+
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "${SERVER_PORT:-8000}:8000"
+    environment:
+      # Database — Azure CosmosDB for PostgreSQL
+      AZURE_COSMOSDB_PG_URL: ${AZURE_COSMOSDB_PG_URL}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      # Gemini
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      # Azure Blob Storage
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
+      AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-resume-archive}
+      TEMPLATE_BLOB_PATH: ${TEMPLATE_BLOB_PATH:-templates/master_resume.tex}
+      # Server
+      SERVER_HOST: ${SERVER_HOST:-0.0.0.0}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      # LangGraph
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-6}
+      LANGGRAPH_CHECKPOINT_TABLE: ${LANGGRAPH_CHECKPOINT_TABLE:-langgraph_checkpoints}
+      # LaTeX
+      PDFLATEX_TIMEOUT_SECONDS: ${PDFLATEX_TIMEOUT_SECONDS:-30}
+      LATEX_FIX_MAX_RETRIES: ${LATEX_FIX_MAX_RETRIES:-2}
+      # Caching
+      PROJECT_BULLET_CACHE_TTL_DAYS: ${PROJECT_BULLET_CACHE_TTL_DAYS:-90}
+      DRAFT_CACHE_TTL_DAYS: ${DRAFT_CACHE_TTL_DAYS:-7}
+    volumes:
+      - ./server:/app
+      - ./template:/template:ro
+    command: uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - server
+    volumes:
+      - ./client/src:/app/src
+    environment:
+      VITE_API_URL: http://localhost:8000
+    restart: unless-stopped

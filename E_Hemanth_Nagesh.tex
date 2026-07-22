@@ -1,0 +1,223 @@
+%-------------------------
+% Resume in Latex
+% Author : E Hemanth Nagesh
+% Based off of: https://github.com/jakeryang/resume
+% License : MIT
+%------------------------
+
+\documentclass[letterpaper,10pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+
+% fontawesome
+\usepackage{fontawesome5}
+
+% fixed width
+\usepackage[scale=0.90,lf]{FiraMono}
+
+% light-grey
+\definecolor{light-grey}{gray}{0.83}
+\definecolor{dark-grey}{gray}{0.3}
+\definecolor{text-grey}{gray}{.08}
+
+\DeclareRobustCommand{\ebseries}{\fontseries{eb}\selectfont}
+\DeclareTextFontCommand{\texteb}{\ebseries}
+
+% custom underilne
+\usepackage{contour}
+\usepackage[normalem]{ulem}
+\renewcommand{\ULdepth}{1.8pt}
+\contourlength{0.8pt}
+\newcommand{\myuline}[1]{%
+  \uline{\phantom{#1}}%
+  \llap{\contour{white}{#1}}%
+}
+
+% custom font: helvetica-style
+\usepackage{tgheros}
+\renewcommand*\familydefault{\sfdefault} 
+\usepackage[T1]{fontenc}
+
+\pagestyle{fancy}
+\fancyhf{} 
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust margins 
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{0in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.75in}       
+\addtolength{\textheight}{1.25in}      
+
+\urlstyle{same}
+
+\raggedbottom
+\setlength{\tabcolsep}{0in}
+
+% Sections formatting 
+\titleformat {\section}{
+    \bfseries \vspace{-4pt} \raggedright \large 
+}{}{0em}{}[\color{light-grey} {\titlerule[2pt]} \vspace{-6pt}] 
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item\small{
+    {#1 \vspace{-2pt}} 
+  }
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item 
+    \begin{tabular*}{\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & {\color{dark-grey}\small #2}\vspace{1pt}\\ 
+      \textit{#3} & {\color{dark-grey} \small #4}\\ 
+    \end{tabular*}\vspace{-6pt} 
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
+      #1 & {\color{dark-grey}} \\
+    \end{tabular*}\vspace{-6pt} 
+}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}\vspace{-6pt}} 
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-4pt}} 
+
+\color{text-grey}
+\hypersetup{
+    pdftitle={Hemanth Nagesh - AI ML Engineer Resume},
+    pdfauthor={Hemanth Nagesh},
+    pdfsubject={AI ML Engineer},
+    pdfkeywords={AI Engineer, Machine Learning Engineer, GenAI, LangChain, LangGraph, LlamaIndex, PyTorch, Azure, LLM, RAG}
+}
+
+%-------------------------------------------
+%%%%%%  RESUME STARTS HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\begin{document}
+
+%----------HEADING----------
+\begin{center}
+    \textbf{\Huge E Hemanth Nagesh} \\ \vspace{5pt}
+    \small 
+    \faPhone* \texttt{+91 99801 44503} \hspace{1pt} $|$     \hspace{1pt} \faEnvelope \hspace{2pt} \texttt{hemanthnagesh082@gmail.com} \hspace{1pt} $|$ 
+    \hspace{1pt} \faLinkedin \hspace{2pt} \href{https://linkedin.com/in/e-hemanth-nagesh}{\texttt{LinkedIn}} $|$
+    \faGithub \hspace{2pt} \href{https://github.com/hemanth-nagesh}{\texttt{GitHub}} \hspace{1pt} $|$     \hspace{1pt} \faGlobe \hspace{2pt} \href{https://portfolio-ehn.netlify.app/}{\texttt{Portfolio}}
+    \\ \vspace{-3pt}
+\end{center}
+
+%-----------PROFESSIONAL SUMMARY-----------
+\section{PROFESSIONAL SUMMARY}
+\small
+Research Engineer with MCA and 2.5+ years of experience developing scalable backend systems, AI/ML integration, and high-performance applications. Expertise in building RESTful APIs using FastAPI, optimizing SQL queries in PostgreSQL/MySQL, and managing NoSQL databases including MongoDB. Strong background in data preprocessing with Pandas, NumPy, and SQLAlchemy for efficient data retrieval. Experienced in CI/CD pipeline development using Git, Docker, and Kubernetes for automated deployment and testing. Proficient in machine learning model development, deployment, and optimization using PyTorch, TensorFlow, and scikit-learn. Strong analytical and problem-solving skills with proven ability to deliver production-grade backend solutions in fast-paced collaborative environments.
+\vspace{-6pt}
+
+%-----------EXPERIENCE-----------
+\section{EXPERIENCE}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {Tata Consultancy Services}{Dec. 2023 -- Present}
+      {AI/ML \& Prompt Engineer — Gen AI \& MLOps}{Bangalore, India}
+      \resumeItemListStart
+        \resumeItem{Developed and maintained scalable backend services using Python and FastAPI, building RESTful APIs for AI/ML model integration and multi-agent workflows.}
+        \resumeItem{Optimized SQL queries in PostgreSQL/MySQL for complex data retrieval and reporting, improving query performance by 40\% through indexing and query restructuring.}
+        \resumeItem{Implemented data preprocessing pipelines using Pandas, NumPy, and SQLAlchemy for efficient data cleaning, feature engineering, and optimized data retrieval.}
+        \resumeItem{Built and deployed MCP servers to consume data from multiple sources, enabling seamless integration of diverse data streams for AI applications and model training workflows.}
+        \resumeItem{Developed CI/CD pipelines using GitLab CI for automated testing, deployment, and monitoring of microservices — reducing deployment time by 60\%.}
+        \resumeItem{Conducted extensive experiments to optimize model performance using metrics like accuracy, precision, and recall; implemented iterative model fine-tuning and hyperparameter optimization for production deployment.}
+        \resumeItem{Architected production RAG systems integrating Azure OpenAI/Cognitive Services with vector databases (Chroma, pgvector) and MySQL — implementing hybrid retrieval and grounded responses to ensure accuracy and data safety.}
+        \resumeItem{Partnered with cross-functional teams to integrate AI/ML models into Azure-hosted, Docker-containerized microservices architecture using FastAPI and REST APIs.}
+        \resumeItem{Established LLMOps observability platform with LLM-as-judge scoring, continuously analyzing logs for quality, latency, and cost per inference to reduce evaluation turnaround time.}
+      \resumeItemListEnd
+    \resumeSubheading
+      {BOTSIO Chatbot LLP}{Mar. 2023 -- May. 2023}
+      {AI Engineer Intern — LLM Applications \& AI Automation}{Bangalore, India}
+      \resumeItemListStart
+        \resumeItem{Built end-to-end RAG pipelines for production conversational AI systems — handling data ingestion, vector indexing (FAISS), and generating accurate, intent-driven responses using state-of-the-art LLMs.}
+        \resumeItem{Developed scalable Python (FastAPI) RESTful APIs to operationalize ML outputs and dialogue systems into PostgreSQL-backed environments — applying version control and automated testing.}
+        \resumeItem{Iterated and optimized prompt engineering across various LLM APIs (OpenAI, HuggingFace); diagnosed edge cases and latency issues to support continuous-learning improvements.}
+      \resumeItemListEnd
+  \resumeSubHeadingListEnd
+
+\section{PROJECTS}
+    \resumeSubHeadingListStart
+      \resumeProjectHeading
+          {\textbf{AI-Powered Multi-Agent Automation Platform for Enterprise Client Delivery}} {2025 -- present}
+          \resumeItemListStart
+            \resumeItem{Guided the transformation of ML research and domain expertise into viable prototypes by designing a multi-agent workflow platform with a supervisor agent, domain-specific agents (research, database, document), and a Temporal-based workflow executor — enabling retry policies and human-in-the-loop oversight.}
+            \resumeItem{Built and trained production-grade automation engines and NLU-based conversational algorithms, uncovering patterns in complex, high-dimensionality dialogue data to power persona-aware, modality-sensitive interactions for client deliverables.}
+            \resumeItem{Architected dual-layer memory (Redis short-term + Mem0/pgvector long-term) and deployed LangFuse observability with LLM-as-judge evaluation — guiding the testing and validation of models to determine deployment viability and reduce evaluation turnaround time.}
+            \resumeItem{Wrapped agent capabilities in production APIs with GitLab CI pipelines for automated testing, IP safety, and distributed execution — containerized via Docker and orchestrated with Kubernetes to support scalable, fit-for-purpose delivery for internal and external clients.}
+            \resumeItem{\textbf{Tech Stack}: Python, FastAPI, LangChain, LangGraph, OpenAI/Mistral APIs, Temporal, Redis, pgvector, LangFuse, Docker, Kubernetes, GitLab CI}
+          \resumeItemListEnd
+    \resumeProjectHeading
+    {\textbf{Nayan -- AI Vision Assistant for Smart Glasses (in collaboration with Titan)}} {[MONTH/YEAR] -- [MONTH/YEAR]}
+    \resumeItemListStart
+      \resumeItem{Guided the transformation of computer vision research into a viable prototype for Nayan smart glasses, developed in collaboration with Titan -- enabling visually impaired and elderly users to identify their medication and understand dosage instructions hands-free.}
+      \resumeItem{Built and trained production-grade real-time vision algorithms (object detection + OCR) processing high-dimensionality visual data from the glass-mounted camera, uncovering patterns to accurately recognize medicine labels, tablets, and packaging under varying lighting and distance conditions.}
+      \resumeItem{Designed an empathetic, healthcare-focused conversational AI layer using NLP and persona-tuned prompting -- delivering warm, human-centered voice guidance that walks users through their medication schedule rather than a flat text readout.}
+      \resumeItem{Tested and validated the end-to-end vision + conversational pipeline for real-world deployment viability, collaborating with Titan's product team as a client stakeholder on solution design and technical delivery.}
+      \resumeItem{\textbf{Tech Stack}: Python, PyTorch, OpenCV, OCR, LLM APIs, FastAPI, Text-to-Speech, Real-time/Edge Inference}
+    \resumeItemListEnd
+      \resumeProjectHeading
+          {\textbf{ML-Driven Predictive Analytics \& Document Intelligence Platform}} {2023 -- 2024}
+          \resumeItemListStart
+            \resumeItem{Developed and trained production-grade machine learning algorithms — regression, classification, and clustering — on complex, high-dimensionality, large-scale real-world datasets to uncover patterns and deliver predictive analytics for client applications.}
+            \resumeItem{Designed a computer-vision and GenAI-powered RAG verification pipeline (PyTorch/scikit-learn) deployed as microservices on Azure App Services — testing and validating models to determine deployment viability, reducing manual review effort by 70\% and improving decision-support accuracy.}
+            \resumeItem{Implemented data preprocessing pipelines with feature engineering, normalization, and visualization (Pandas, NumPy, Matplotlib) to prepare high-dimensionality data for model training and viability testing.}
+            \resumeItem{Optimized model performance through hyperparameter tuning and cross-validation, improving accuracy and precision metrics ahead of production deployment; consulted with stakeholders on solution design to support client delivery.}
+            \resumeItem{\textbf{Tech Stack}: Python, PyTorch, scikit-learn, Pandas, NumPy, Matplotlib, PostgreSQL, Azure App Services, REST APIs}
+          \resumeItemListEnd
+    \resumeSubHeadingListEnd
+
+%-----------PROGRAMMING SKILLS-----------
+\section{TECHNICAL SKILLS}
+ \begin{itemize}[leftmargin=0in, label={}]
+    \small{\item{
+     \textbf{Backend Development} {: Python, FastAPI, REST APIs, Microservices, Docker, Kubernetes, Git, CI/CD Pipelines}\vspace{2pt} \\
+     \textbf{Databases} {: PostgreSQL, MySQL, MongoDB, Redis, Vector Databases, Time-Series Databases}\vspace{2pt} \\
+     \textbf{Data Processing} {: Pandas, NumPy, SQLAlchemy, Matplotlib, Data Preprocessing, Feature Engineering}\vspace{2pt} \\
+     \textbf{ML Algorithms \& Deep Learning} {: Regression, Classification, Clustering, CNNs, RNNs, Transformers, GANs, Fine-tuning, Hyperparameter Optimization}\vspace{2pt} \\
+     \textbf{Gen AI \& Agentic AI} {: LangGraph, RAG Pipelines, Prompt Engineering, Fine-tuning, Multimodal LLMs, ReAct Patterns, MCP Servers}\vspace{2pt} \\
+     \textbf{Cloud \& MLOps} {: Azure AI Studio, AWS, LLMOps, LLM-as-Judge, Microservices}
+    }}
+ \end{itemize}
+%-----------EDUCATION-----------
+\section {EDUCATION}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {PES College of Engineering, Mandya}{2021 -- 2023}
+      {Master of Computer Applications (MCA)}{}
+    \resumeSubheading
+      {Ramaiah Institute of Business Studies, Bangalore}{2018 -- 2021}
+      {Bachelor of Computer Applications (BCA)}{}
+  \resumeSubHeadingListEnd
+
+%-----------CERTIFICATIONS & PUBLICATIONS-----------
+\section{CERTIFICATIONS \& PUBLICATIONS}
+ \begin{itemize}[leftmargin=0in, label={}]
+    \small{
+        \item[] \textbf{Microsoft Certified: Azure AI Engineer Associate} (2026) \vspace{-2pt}
+        \item[] \textbf{AI-Powered Information Retrieval Systems} (2023) — Peer-reviewed paper on semantic search and accessible AI, presented as part of research on AI-powered information retrieval. \href{https://rjpn.org/ijcspub/viewpaperforall.php?paper=IJCSP23B1477}{\myuline{[Link]}}
+    }
+ \end{itemize}
+
+%-------------------------------------------
+\end{document}
