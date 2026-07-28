@@ -400,5 +400,5 @@ async def seed(dsn: str) -> None:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     config = get_config()
-    dsn = os.getenv("DATABASE_URL", config.database_url_final)
+    dsn = os.getenv("DATABASE_URL", config.database_url)
     asyncio.run(seed(dsn))
