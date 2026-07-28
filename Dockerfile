@@ -30,4 +30,4 @@ COPY template/master_resume.tex ./template/master_resume.tex
 ENV PYTHONPATH=/app
 EXPOSE 8000
 
-CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
