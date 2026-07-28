@@ -19,13 +19,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
 
 from server.graph.state import ResumeState
 from server.services.latex_utils import escape_special_chars
-
-if TYPE_CHECKING:
-    from server.services.blob import BlobClient
 
 _logger = logging.getLogger(__name__)
 
@@ -44,7 +40,6 @@ async def run(
     state: ResumeState,
     *,
     template: str,
-    template_fallback: bool = False,
 ) -> ResumeState:
     _logger.info("N8: Assembling LaTeX from %d section outputs",
                   len(state.get("sections_output", [])))
@@ -76,7 +71,6 @@ async def run(
     return ResumeState(
         latex_source=latex,
         latex_fix_attempts=0,
-        template_fallback=template_fallback,
     )
 
 

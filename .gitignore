@@ -14,10 +14,12 @@ client/dist/
 # Environment
 .env
 .env.local
+.kiro
 
 # IDE
 .vscode/
 .idea/
+.commandcode/
 *.swp
 *.swo
 

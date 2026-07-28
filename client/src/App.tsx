@@ -1,7 +1,7 @@
 import { useCache } from './hooks/useCache';
 import { useSSE } from './hooks/useSSE';
 import { saveDraft } from './services/cache';
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import AdminPanel from './components/AdminPanel';
 import LoginPage from './components/LoginPage';
 import { isAuthenticated, validateToken } from './services/auth';
@@ -20,6 +20,7 @@ const NODE_LABELS: Record<string, string> = {
   n7d_skills_gen: 'Assembling skills',
   n8_latex_assembler: 'Building resume',
   n9_latex_validator: 'Validating format',
+  n10_pdf_compiler: 'Compiling PDF',
   n12_response_builder: 'Packaging output',
 };
 
@@ -39,9 +40,31 @@ export default function App() {
     draftLoaded, draftTimestamp, clearDraft,
   } = useCache();
 
-  const { isGenerating, nodeStatuses, error, latexOutput, templateFallback, startGeneration, cancelGeneration } = useSSE();
+  const { isGenerating, nodeStatuses, error, latexOutput, pdfBase64, startGeneration, cancelGeneration } = useSSE();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showSource, setShowSource] = useState(false);
+
+  // Decode the base64 PDF into an object URL for preview/download, and
+  // revoke it on cleanup or when a new PDF arrives.
+  const pdfObjectUrl = useMemo(() => {
+    if (!pdfBase64) return null;
+    try {
+      const binary = atob(pdfBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      return URL.createObjectURL(blob);
+    } catch {
+      return null;
+    }
+  }, [pdfBase64]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfObjectUrl) URL.revokeObjectURL(pdfObjectUrl);
+    };
+  }, [pdfObjectUrl]);
 
   if (!unlocked) {
     return <LoginPage onUnlock={() => setUnlocked(true)} />;
@@ -75,6 +98,11 @@ export default function App() {
   };
 
   const handleDownload = () => {
+    if (pdfObjectUrl) {
+      const a = document.createElement('a');
+      a.href = pdfObjectUrl; a.download = 'resume.pdf'; a.click();
+      return;
+    }
     if (!latexOutput) return;
     const blob = new Blob([latexOutput], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -204,35 +232,70 @@ export default function App() {
         </div>
       )}
 
-      {/* LaTeX Output */}
+      {/* Output */}
       {latexOutput && !isGenerating && (
         <div className="latex-output">
-          {templateFallback && (
-            <div className="draft-banner" style={{ background: '#fef3c7', borderColor: '#f59e0b' }}>
-              <span>⚠️ Using local fallback template — Blob Storage is unavailable. Upload template to Azure for production use.</span>
-            </div>
+          {pdfObjectUrl ? (
+            <>
+              <div className="latex-toolbar">
+                <span style={{ fontWeight: 600 }}>📄 Generated Resume PDF</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-sm btn-ghost" onClick={() => setShowSource((s) => !s)}>
+                    {showSource ? 'Hide source' : 'View source'}
+                  </button>
+                  <button className="btn btn-sm btn-primary" onClick={handleDownload}>
+                    ⬇ Download .pdf
+                  </button>
+                </div>
+              </div>
+              <div className="latex-viewer" style={{ height: 600 }}>
+                <iframe
+                  src={pdfObjectUrl}
+                  title="Generated resume PDF preview"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              </div>
+              {showSource && (
+                <div className="latex-viewer" style={{ marginTop: 12 }}>
+                  <div className="latex-viewer-header">
+                    <span>resume.tex</span>
+                    <span style={{ fontSize: 11, opacity: .6 }}>{latexOutput.split('\n').length} lines</span>
+                  </div>
+                  <textarea readOnly value={latexOutput} rows={16} />
+                  <button className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} onClick={handleCopy}>
+                    {copied ? '✓ Copied' : '📋 Copy LaTeX'}
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="draft-banner" style={{ background: '#fef3c7', borderColor: '#f59e0b' }}>
+                <span>⚠️ Couldn't produce a PDF — showing LaTeX source instead. Copy it into Overleaf or compile locally.</span>
+              </div>
+              <div className="latex-toolbar">
+                <span style={{ fontWeight: 600 }}>📄 Generated LaTeX</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-sm btn-ghost" onClick={handleCopy}>
+                    {copied ? '✓ Copied' : '📋 Copy'}
+                  </button>
+                  <button className="btn btn-sm btn-primary" onClick={handleDownload}>
+                    ⬇ Download .tex
+                  </button>
+                </div>
+              </div>
+              <div className="latex-viewer">
+                <div className="latex-viewer-header">
+                  <span>resume.tex</span>
+                  <span style={{ fontSize: 11, opacity: .6 }}>{latexOutput.split('\n').length} lines</span>
+                </div>
+                <textarea readOnly value={latexOutput} rows={24} />
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
+                Copy this into <strong>Overleaf</strong> or compile locally with <code>pdflatex resume.tex</code>
+              </p>
+            </>
           )}
-          <div className="latex-toolbar">
-            <span style={{ fontWeight: 600 }}>📄 Generated LaTeX</span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button className="btn btn-sm btn-ghost" onClick={handleCopy}>
-                {copied ? '✓ Copied' : '📋 Copy'}
-              </button>
-              <button className="btn btn-sm btn-primary" onClick={handleDownload}>
-                ⬇ Download .tex
-              </button>
-            </div>
-          </div>
-          <div className="latex-viewer">
-            <div className="latex-viewer-header">
-              <span>resume.tex</span>
-              <span style={{ fontSize: 11, opacity: .6 }}>{latexOutput.split('\n').length} lines</span>
-            </div>
-            <textarea readOnly value={latexOutput} rows={24} />
-          </div>
-          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
-            Copy this into <strong>Overleaf</strong> or compile locally with <code>pdflatex resume.tex</code>
-          </p>
         </div>
       )}
 

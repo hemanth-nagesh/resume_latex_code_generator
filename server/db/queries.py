@@ -480,8 +480,16 @@ async def complete_session(
     selected_role_ids: list[str] | None = None,
     covered_skills: list[str] | None = None,
     uncovered_skills: list[str] | None = None,
-    blob_path: str | None = None,
+    pdf_data: bytes | None = None,
+    pdf_filename: str | None = None,
+    latex_source: str | None = None,
 ) -> None:
+    """Mark a session complete and persist its generated PDF/LaTeX in Postgres.
+
+    Storing the PDF directly on the row (instead of an external blob store)
+    keeps the whole app on a single Postgres database — no other storage
+    service to provision.
+    """
     await pool.execute(
         "UPDATE sessions SET status = 'completed', completed_at = now(), "
         "jd_profile = COALESCE($2, jd_profile), "
@@ -489,7 +497,9 @@ async def complete_session(
         "selected_role_ids = COALESCE($4, selected_role_ids), "
         "covered_skills = COALESCE($5, covered_skills), "
         "uncovered_skills = COALESCE($6, uncovered_skills), "
-        "blob_path = COALESCE($7, blob_path) "
+        "pdf_data = COALESCE($7, pdf_data), "
+        "pdf_filename = COALESCE($8, pdf_filename), "
+        "latex_source = COALESCE($9, latex_source) "
         "WHERE session_key = $1 AND status = 'pending'",
         session_key,
         json.dumps(jd_profile) if jd_profile else None,
@@ -497,8 +507,27 @@ async def complete_session(
         selected_role_ids,
         json.dumps(covered_skills) if covered_skills else None,
         json.dumps(uncovered_skills) if uncovered_skills else None,
-        blob_path,
+        pdf_data,
+        pdf_filename,
+        latex_source,
     )
+
+
+async def get_session_pdf(
+    pool: DatabasePool, session_key: str
+) -> dict[str, Any] | None:
+    """Fetch the archived PDF/LaTeX for a completed session, by session_key.
+
+    Returns the most recent completed session with a non-null pdf_data,
+    or None if nothing has been generated yet for this key.
+    """
+    row = await pool.fetchrow(
+        "SELECT pdf_data, pdf_filename, latex_source FROM sessions "
+        "WHERE session_key = $1 AND status = 'completed' AND pdf_data IS NOT NULL "
+        "ORDER BY completed_at DESC LIMIT 1",
+        session_key,
+    )
+    return _record_to_dict(row) if row else None
 
 
 async def fail_session(pool: DatabasePool, session_key: str, reason: str = "") -> None:

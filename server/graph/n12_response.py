@@ -1,9 +1,7 @@
 """N12 — Response Builder.
 
-Final node in the pipeline. Packages the assembled LaTeX source
-for delivery to the frontend. The client displays the LaTeX code
-in a text area — users can copy/paste it into Overleaf or a local
-TeX editor to compile to PDF themselves.
+Final node in the pipeline. Packages the assembled LaTeX source and the
+compiled PDF (base64) for delivery to the frontend.
 
 Also handles the cached-result shortcut from N1.
 """
@@ -11,17 +9,13 @@ Also handles the cached-result shortcut from N1.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from server.graph.state import ResumeState
-
-if TYPE_CHECKING:
-    from server.services.blob import BlobClient
 
 _logger = logging.getLogger(__name__)
 
 
-async def run(state: ResumeState, *, blob: BlobClient | None = None) -> ResumeState:
+async def run(state: ResumeState) -> ResumeState:
     latex_source = state.get("latex_source", "")
 
     if not latex_source:
@@ -31,11 +25,19 @@ async def run(state: ResumeState, *, blob: BlobClient | None = None) -> ResumeSt
         )
 
     filename = _build_filename(state)
+    pdf_base64 = state.get("pdf_base64", "")
+    pdf_filename = state.get("pdf_filename", "") or filename.removesuffix(".tex")
 
-    _logger.info("N12 response built: %s (%d chars)", filename, len(latex_source))
+    _logger.info(
+        "N12 response built: %s (%d chars LaTeX, %s)",
+        filename, len(latex_source),
+        f"{len(pdf_base64)} b64 chars PDF" if pdf_base64 else "no PDF",
+    )
     return ResumeState(
         latex_source=latex_source,
         latex_filename=filename,
+        pdf_base64=pdf_base64,
+        pdf_filename=pdf_filename,
     )
 
 

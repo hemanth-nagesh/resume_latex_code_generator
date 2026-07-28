@@ -2,7 +2,7 @@
 
 Lifecycle:
 - Startup: configure logging, initialize Container, pre-fetch template
-- Shutdown: dispose Container (close DB pool, Blob client)
+- Shutdown: dispose Container (close DB pool, LaTeX MCP client)
 
 All routes are registered as sub-routers from server/api/.
 """

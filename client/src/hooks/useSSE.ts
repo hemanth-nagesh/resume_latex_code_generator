@@ -11,7 +11,7 @@ interface UseSSEReturn {
   nodeStatuses: Map<NodeId, 'pending' | 'running' | 'completed' | 'failed'>;
   error: string | null;
   latexOutput: string | null;
-  templateFallback: boolean;
+  pdfBase64: string | null;
   startGeneration: (request: GenerateRequest) => void;
   cancelGeneration: () => void;
 }
@@ -23,14 +23,14 @@ export function useSSE(): UseSSEReturn {
   >(new Map());
   const [error, setError] = useState<string | null>(null);
   const [latexOutput, setLatexOutput] = useState<string | null>(null);
-  const [templateFallback, setTemplateFallback] = useState(false);
+  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
 
   const startGeneration = useCallback(async (request: GenerateRequest) => {
     setIsGenerating(true);
     setError(null);
     setLatexOutput(null);
-    setTemplateFallback(false);
+    setPdfBase64(null);
     const newStatuses = new Map<NodeId, 'pending' | 'running' | 'completed' | 'failed'>();
     setNodeStatuses(newStatuses);
 
@@ -62,7 +62,7 @@ export function useSSE(): UseSSEReturn {
             return;
           }
           setLatexOutput(e.latex_source);
-          setTemplateFallback(!!e.template_fallback);
+          setPdfBase64(e.pdf_base64 || null);
           setIsGenerating(false);
         } else if (event.event === 'pipeline_error') {
           const e = rawEvent as PipelineErrorEvent;
@@ -84,6 +84,6 @@ export function useSSE(): UseSSEReturn {
     setIsGenerating(false);
   }, []);
 
-  return { isGenerating, nodeStatuses, error, latexOutput, templateFallback, startGeneration, cancelGeneration };
+  return { isGenerating, nodeStatuses, error, latexOutput, pdfBase64, startGeneration, cancelGeneration };
 }
 

@@ -110,8 +110,8 @@ export interface NodeErrorEvent extends SSEEvent {
 export interface CompleteEvent extends SSEEvent {
   latex_source: string;
   filename: string;
+  pdf_base64?: string;
   warnings: string[];
-  template_fallback?: boolean;
 }
 
 export interface PipelineErrorEvent extends SSEEvent {

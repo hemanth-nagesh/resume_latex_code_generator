@@ -152,15 +152,15 @@ async def _run_pipeline(
         # --- Emit completion ---
         latex_source = last_result.get("latex_source", "")
         filename = last_result.get("latex_filename", "resume.tex")
+        pdf_base64 = last_result.get("pdf_base64", "")
         warnings = last_result.get("warnings", [])
-        template_fallback = last_result.get("template_fallback", False)
 
         await sse_manager.emit_complete(
             session_key=session_key,
             latex_source=latex_source,
             filename=filename,
+            pdf_base64=pdf_base64,
             warnings=warnings,
-            template_fallback=template_fallback,
         )
 
     except Exception as exc:
@@ -205,6 +205,7 @@ _NODE_NAME_MAP: dict[str, NodeId] = {
     "n8_latex_assembler": NodeId.LATEX_ASSEMBLER,
     "n9_latex_validator": NodeId.LATEX_VALIDATOR,
     "n9r_latex_fixer": NodeId.LATEX_FIXER,
+    "n10_pdf_stage": NodeId.PDF_COMPILER,
     "n10_pdf_compiler": NodeId.PDF_COMPILER,
     "n10f_fallback_handler": NodeId.FALLBACK_HANDLER,
     "n11_state_persister": NodeId.STATE_PERSISTER,

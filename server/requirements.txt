@@ -18,13 +18,12 @@ asyncpg>=0.30.0
 langgraph>=0.3.0
 langgraph-checkpoint-postgres>=2.0.0
 
-# Azure
-azure-storage-blob[aio]>=12.24.0
+# LaTeX MCP client (external PDF compilation server)
+httpx>=0.28.0
 
 # Dev & testing
 pytest>=8.3.0
 pytest-asyncio>=0.25.0
-httpx>=0.28.0
 python-dotenv>=1.0.0
 
 # Auth

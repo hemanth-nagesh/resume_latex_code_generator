@@ -3,13 +3,19 @@
 Single source of truth for all settings. Validated at import time through Pydantic.
 Uses the Factory pattern: AppConfig is a singleton cached by get_config().
 
-Azure CosmosDB for PostgreSQL connection strings use SSL (sslmode=require).
-Passwords with special characters must be URL-encoded in the connection URL.
+DATABASE_URL is a plain Postgres connection string — works with Supabase,
+Azure CosmosDB for PostgreSQL, or any other Postgres provider that requires
+SSL (sslmode=require). Passwords with special characters must be
+URL-encoded in the connection URL.
+
+There is no separate blob/object storage — generated PDFs and LaTeX source
+are stored directly in the `sessions` table (see migrations/002_*.sql), so
+the whole app only needs one database connection string.
 """
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,46 +39,17 @@ class AppConfig(BaseSettings):
     gemini_model: str = "gemini-2.5-pro"
     gemini_model_fallback: str = "gemini-2.5-flash"
 
-    # --- Azure CosmosDB for PostgreSQL ---
-    # Accepts both AZURE_COSMOSDB_PG_URL and DATABASE_URL (legacy)
-    azure_cosmosdb_pg_url: str = Field(
-        default="",
-        alias="azure_cosmosdb_pg_url",
-    )
-    database_url: str = Field(default="")
+    # --- PostgreSQL (Supabase, or any Postgres provider) ---
+    database_url: str = Field(..., min_length=10)
     db_pool_min_size: int = 2
     db_pool_max_size: int = 10
-
-    @model_validator(mode="after")
-    def resolve_database_url(self) -> "AppConfig":
-        """Use azure_cosmosdb_pg_url if set, otherwise fall back to database_url."""
-        if self.azure_cosmosdb_pg_url and len(self.azure_cosmosdb_pg_url) > 0:
-            self.database_url = self.azure_cosmosdb_pg_url
-        if not self.database_url:
-            raise ValueError(
-                "Either azure_cosmosdb_pg_url or database_url must be provided"
-            )
-        return self
 
     @field_validator("database_url")
     @classmethod
     def validate_postgres_url(cls, value: str) -> str:
-        if not value:
-            return value  # will be caught by model_validator if both are empty
         if not value.startswith(("postgresql://", "postgres://")):
             raise ValueError("database_url must start with postgresql:// or postgres://")
         return value
-
-    # --- Azure Blob Storage ---
-    azure_storage_connection_string: str = Field(..., min_length=20)
-    azure_storage_container: str = "resume-archive"
-    template_blob_path: str = "templates/master_resume.tex"
-
-    # --- Blob Storage — Versioned resume path structure ---
-    # Path template for archived resumes:
-    #   resumes/{company_slug}/{role_slug}/{company}_{role}_{session_key}/
-    blob_resumes_prefix: str = "resumes"
-    blob_templates_prefix: str = "templates"
 
     # --- Server ---
     server_host: str = "0.0.0.0"
@@ -95,31 +72,17 @@ class AppConfig(BaseSettings):
     project_bullet_cache_ttl_days: int = 90
     draft_cache_ttl_days: int = 7
 
+    # --- LaTeX MCP (external LaTeX → PDF compiler) ---
+    # REST endpoint documented in custom_latex_mcp.md: POST {latex_mcp_url}/api/convert
+    latex_mcp_url: str = "http://20.212.83.231"
+    latex_mcp_api_key: str = Field(..., min_length=10)
+    latex_mcp_timeout_seconds: int = 30
+    latex_mcp_max_retries: int = 2
+
     @field_validator("cors_origins")
     @classmethod
     def split_origins(cls, value: str) -> list[str]:
         return [origin.strip() for origin in value.split(",") if origin.strip()]
-
-    @property
-    def database_url_final(self) -> str:
-        """The resolved database URL, guaranteed non-empty after validation."""
-        return self.database_url
-
-    def build_resume_blob_path(
-        self,
-        company_slug: str,
-        role_slug: str,
-        session_key: str,
-    ) -> str:
-        """Build a versioned blob path for a generated resume.
-
-        Example:
-            resumes/tata-consultancy-services/ai-ml-engineer/tcs_aiml_abc123/
-        """
-        return (
-            f"{self.blob_resumes_prefix}/{company_slug}/{role_slug}/"
-            f"{company_slug}_{role_slug}_{session_key}"
-        )
 
     def as_dict(self) -> dict:
         """Return config as plain dict for dependency injection."""

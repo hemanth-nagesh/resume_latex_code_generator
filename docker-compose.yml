@@ -1,8 +1,9 @@
 # =============================================================================
-# Resume AI Builder — Docker Compose (Azure Cloud Edition)
+# Resume AI Builder — Docker Compose (Supabase + Northflank edition)
 # =============================================================================
-# PostgreSQL is now hosted on Azure CosmosDB for PostgreSQL — no local db container.
-# Only the server and client run locally. All data goes to Azure.
+# PostgreSQL is hosted on Supabase — no local db container, no blob storage.
+# Generated PDFs/LaTeX live in the `sessions` table. Only the server and
+# client run locally; all persistent data goes to Supabase.
 #
 # Start:  docker compose up
 # Stop:   docker compose down
@@ -16,17 +17,12 @@ services:
     ports:
       - "${SERVER_PORT:-8000}:8000"
     environment:
-      # Database — Azure CosmosDB for PostgreSQL
-      AZURE_COSMOSDB_PG_URL: ${AZURE_COSMOSDB_PG_URL}
-      DATABASE_URL: ${DATABASE_URL:-}
+      # Database — Supabase Postgres
+      DATABASE_URL: ${DATABASE_URL}
       DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
       # Gemini
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      # Azure Blob Storage
-      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
-      AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-resume-archive}
-      TEMPLATE_BLOB_PATH: ${TEMPLATE_BLOB_PATH:-templates/master_resume.tex}
       # Server
       SERVER_HOST: ${SERVER_HOST:-0.0.0.0}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
@@ -39,6 +35,11 @@ services:
       # Caching
       PROJECT_BULLET_CACHE_TTL_DAYS: ${PROJECT_BULLET_CACHE_TTL_DAYS:-90}
       DRAFT_CACHE_TTL_DAYS: ${DRAFT_CACHE_TTL_DAYS:-7}
+      # LaTeX MCP (external LaTeX -> PDF compiler)
+      LATEX_MCP_URL: ${LATEX_MCP_URL:-http://20.212.83.231}
+      LATEX_MCP_API_KEY: ${LATEX_MCP_API_KEY}
+      LATEX_MCP_TIMEOUT_SECONDS: ${LATEX_MCP_TIMEOUT_SECONDS:-30}
+      LATEX_MCP_MAX_RETRIES: ${LATEX_MCP_MAX_RETRIES:-2}
     volumes:
       - ./server:/app
       - ./template:/template:ro

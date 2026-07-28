@@ -10,6 +10,7 @@ and passed as state["session_key"]. This node only handles lookup/creation.
 
 from __future__ import annotations
 
+import base64
 import logging
 
 from server.graph.state import ResumeState
@@ -17,6 +18,10 @@ from server.services.database import DatabasePool
 from server.db import queries
 
 _logger = logging.getLogger(__name__)
+
+
+def _to_base64(data: bytes) -> str:
+    return base64.b64encode(bytes(data)).decode("ascii")
 
 
 async def run(state: ResumeState, *, db: DatabasePool) -> ResumeState:
@@ -33,15 +38,21 @@ async def run(state: ResumeState, *, db: DatabasePool) -> ResumeState:
 
             _logger.info("Session %s found with status=%s", session_id, status)
 
-            if status == "completed" and existing.get("blob_path"):
-                _logger.info(
-                    "Session %s has cached PDF at %s — short-circuiting",
-                    session_id, existing["blob_path"],
-                )
-                return ResumeState(
-                    session_id=session_id,
-                    warnings=["Using cached result. Regenerate for a fresh version."],
-                )
+            if status == "completed":
+                cached = await queries.get_session_pdf(db, session_key)
+                if cached and cached.get("pdf_data"):
+                    _logger.info(
+                        "Session %s has a cached PDF — short-circuiting", session_id,
+                    )
+                    return ResumeState(
+                        session_id=session_id,
+                        latex_source=cached.get("latex_source") or "",
+                        pdf_bytes=bytes(cached["pdf_data"]),
+                        pdf_base64=_to_base64(cached["pdf_data"]),
+                        pdf_filename=cached.get("pdf_filename") or "",
+                        latex_filename=(cached.get("pdf_filename") or "resume") + ".tex",
+                        warnings=["Using cached result. Regenerate for a fresh version."],
+                    )
 
             if status == "pending":
                 return ResumeState(session_id=session_id, resume_from_node=None)

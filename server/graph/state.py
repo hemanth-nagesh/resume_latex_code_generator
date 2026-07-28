@@ -69,14 +69,14 @@ class ResumeState(TypedDict, total=False):
     latex_valid: bool
     validation_errors: list[str]
     latex_fix_attempts: int
-    template_fallback: bool
 
-    # --- PDF (N10 output) ---
+    # --- PDF (N10 pdf_stage output — via PdfCompilationService/LaTeX MCP) ---
     pdf_bytes: bytes
-
-    # --- Response (N12 output) ---
     pdf_base64: str
     pdf_filename: str
+
+    # --- Response (N12 output) ---
+    latex_filename: str
 
     # --- Warnings ---
     warnings: Annotated[list[str], operator.add]

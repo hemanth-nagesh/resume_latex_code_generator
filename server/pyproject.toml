@@ -16,17 +16,16 @@ dependencies = [
     "pydantic>=2.10.0",
     "pydantic-settings>=2.7.0",
     "google-genai>=1.14.0",
-    "azure-storage-blob[aio]>=12.24.0",
     "langgraph>=0.3.0",
     "langgraph-checkpoint-postgres>=2.0.0",
     "asyncpg>=0.30.0",
+    "httpx>=0.28.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.25.0",
-    "httpx>=0.28.0",
     "ruff>=0.9.0",
 ]
 

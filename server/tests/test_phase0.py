@@ -167,21 +167,26 @@ class TestTypes:
 
 
 class TestNodeIdsCoverage:
-    def test_all_17_nodes_have_stubs(self):
-        """Verify every NodeId has a corresponding stub module."""
+    def test_all_pipeline_nodes_have_stubs(self):
+        """Verify every active graph node has a corresponding module.
+
+        N10 (pdflatex compiler), N10f (local fallback), and N11 (Blob
+        persister) were retired in favor of n10_pdf_stage, which delegates
+        to PdfCompilationService (MCP-based compile + Postgres persistence).
+        """
         from server.graph import (
             n1_session, n2_input, n3_jd_analyzer, n4_kg_loader,
             n5_scorer, n6_selector,
             n7a_summary, n7b_experience, n7c_projects, n7d_skills,
             n8_assembler, n9_validator, n9r_fixer,
-            n10_compiler, n10f_fallback, n11_persister, n12_response,
+            n10_pdf_stage, n12_response,
         )
         modules = [
             n1_session, n2_input, n3_jd_analyzer, n4_kg_loader,
             n5_scorer, n6_selector,
             n7a_summary, n7b_experience, n7c_projects, n7d_skills,
             n8_assembler, n9_validator, n9r_fixer,
-            n10_compiler, n10f_fallback, n11_persister, n12_response,
+            n10_pdf_stage, n12_response,
         ]
         for mod in modules:
             assert hasattr(mod, "run"), f"{mod.__name__} missing run function"

@@ -89,8 +89,8 @@ class NodeErrorEvent(SSEEvent):
 class CompleteEvent(SSEEvent):
     latex_source: str
     filename: str
+    pdf_base64: str = ""
     warnings: list[str] = Field(default_factory=list)
-    template_fallback: bool = False
 
 
 class PipelineErrorEvent(SSEEvent):

@@ -1,5 +1,7 @@
 # Production Dockerfile — Resume AI Builder
-# Multi-stage: build client static files → serve with FastAPI
+# Multi-stage: build client static files → serve with FastAPI (single
+# container hosts both UI and API). PDF compilation happens on an external
+# LaTeX MCP server, so no TeX Live is installed in this image.
 FROM node:22-alpine AS client-build
 WORKDIR /app/client
 COPY client/package.json ./
@@ -10,7 +12,7 @@ RUN npm run build
 FROM python:3.13-slim AS server
 WORKDIR /app
 
-# Install system deps (libpq for asyncpg; no LaTeX needed — raw .tex output)
+# Install system deps (libpq for asyncpg)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*

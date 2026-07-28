@@ -154,7 +154,7 @@ class SSEEventManager:
         latex_source: str,
         filename: str,
         warnings: list[str] | None = None,
-        template_fallback: bool = False,
+        pdf_base64: str = "",
     ) -> None:
         await self._emit(
             session_key,
@@ -164,8 +164,8 @@ class SSEEventManager:
                 timestamp=_now_iso(),
                 latex_source=latex_source,
                 filename=filename,
+                pdf_base64=pdf_base64,
                 warnings=warnings or [],
-                template_fallback=template_fallback,
             ),
         )
         self._pipeline_running[session_key] = False

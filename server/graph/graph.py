@@ -78,7 +78,8 @@ def build_graph(
     graph.add_edge("n7d_skills_gen", "n8_latex_assembler")
 
     graph.add_edge("n8_latex_assembler", "n9_latex_validator")
-    graph.add_edge("n9_latex_validator", "n12_response_builder")
+    graph.add_edge("n9_latex_validator", "n10_pdf_stage")
+    graph.add_edge("n10_pdf_stage", "n12_response_builder")
     graph.add_edge("n12_response_builder", END)
 
     return graph.compile(checkpointer=checkpointer)
@@ -96,7 +97,7 @@ def _register_nodes(graph: StateGraph, container: Container) -> None:
         n1_session, n2_input, n3_jd_analyzer, n4_kg_loader,
         n5_scorer, n6_selector,
         n7a_summary, n7b_experience, n7c_projects, n7d_skills,
-        n8_assembler, n9_validator,
+        n8_assembler, n9_validator, n10_pdf_stage,
         n12_response,
     )
 
@@ -136,20 +137,22 @@ def _register_nodes(graph: StateGraph, container: Container) -> None:
     async def _n7d(state: ResumeState) -> ResumeState:
         return await n7d_skills.run(state, gemini=container.gemini_for(5))
 
-    # N8: template (fetched once from blob, cached in container)
+    # N8: template (loaded from local file, cached in container)
     async def _n8(state: ResumeState) -> ResumeState:
         template = await container.template
-        return await n8_assembler.run(
-            state, template=template, template_fallback=container.is_template_fallback,
-        )
+        return await n8_assembler.run(state, template=template)
 
     # N9: pure
     async def _n9(state: ResumeState) -> ResumeState:
         return await n9_validator.run(state)
 
-    # N12: blob (optional — for cached PDF retrieval)
+    # N10: LaTeX MCP client + Blob + DB (via PdfCompilationService)
+    async def _n10(state: ResumeState) -> ResumeState:
+        return await n10_pdf_stage.run(state, service=container.pdf_service, db=container.db)
+
+    # N12: pure
     async def _n12(state: ResumeState) -> ResumeState:
-        return await n12_response.run(state, blob=container.blob)
+        return await n12_response.run(state)
 
     graph.add_node("n1_session_validator", _n1)
     graph.add_node("n2_input_parser", _n2)
@@ -163,6 +166,7 @@ def _register_nodes(graph: StateGraph, container: Container) -> None:
     graph.add_node("n7d_skills_gen", _n7d)
     graph.add_node("n8_latex_assembler", _n8)
     graph.add_node("n9_latex_validator", _n9)
+    graph.add_node("n10_pdf_stage", _n10)
     graph.add_node("n12_response_builder", _n12)
 
 

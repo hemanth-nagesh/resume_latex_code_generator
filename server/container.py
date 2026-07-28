@@ -15,9 +15,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from server.config import AppConfig
     from server.services.gemini import GeminiClient
-    from server.services.blob import BlobClient
     from server.services.database import DatabasePool
     from server.services.logger import StructuredLogger
+    from server.services.latex_mcp import LatexMcpClient
+    from server.services.pdf_compilation import PdfCompilationService
 
 _logger = logging.getLogger(__name__)
 
@@ -34,10 +35,10 @@ class Container:
         self._config = config
         self._gemini: GeminiClient | None = None
         self._gemini_clients: dict[int, GeminiClient] = {}
-        self._blob: BlobClient | None = None
         self._db: DatabasePool | None = None
         self._template: str | None = None
-        self._template_fallback: bool = False
+        self._latex_mcp: LatexMcpClient | None = None
+        self._pdf_service: PdfCompilationService | None = None
         self._disposed = False
 
     # ------------------------------------------------------------------
@@ -88,16 +89,28 @@ class Container:
         return self._gemini_clients[call_number]
 
     @property
-    def blob(self) -> BlobClient:
-        if self._blob is None:
-            from server.services.blob import BlobClient
+    def latex_mcp(self) -> LatexMcpClient:
+        """Client for the external LaTeX -> PDF MCP server (custom_latex_mcp.md)."""
+        if self._latex_mcp is None:
+            from server.services.latex_mcp import LatexMcpClient
 
-            self._blob = BlobClient(
-                connection_string=self._config.azure_storage_connection_string,
-                container_name=self._config.azure_storage_container,
+            self._latex_mcp = LatexMcpClient(
+                base_url=self._config.latex_mcp_url,
+                api_key=self._config.latex_mcp_api_key,
+                timeout_seconds=self._config.latex_mcp_timeout_seconds,
+                max_retries=self._config.latex_mcp_max_retries,
             )
-            _logger.info("BlobClient initialized")
-        return self._blob
+            _logger.info("LatexMcpClient initialized (%s)", self._config.latex_mcp_url)
+        return self._latex_mcp
+
+    @property
+    def pdf_service(self) -> PdfCompilationService:
+        """Use-case service: validated LaTeX -> compiled & persisted PDF."""
+        if self._pdf_service is None:
+            from server.services.pdf_compilation import PdfCompilationService
+
+            self._pdf_service = PdfCompilationService(mcp_client=self.latex_mcp)
+        return self._pdf_service
 
     @property
     def db(self) -> DatabasePool:
@@ -114,48 +127,22 @@ class Container:
 
     @property
     async def template(self) -> str:
-        """Fetch the locked master .tex template from Azure Blob Storage.
+        """Load the locked master .tex template from the local filesystem.
 
-        If Blob is unavailable (local dev without Azure), falls back to
-        reading template/master_resume.tex from the local filesystem.
-        Sets _template_fallback flag so nodes can surface a fallback notice.
-
-        Cached as a string constant after first fetch — the template is
-        read-only and never modified at runtime.
+        The template is bundled into the Docker image (template/master_resume.tex)
+        — there is no external blob/object store. Cached as a string constant
+        after first read since the template is read-only at runtime.
         """
         if self._template is None:
-            try:
-                blob_client = self.blob
-                self._template = await blob_client.download_template(
-                    self._config.template_blob_path
-                )
-                self._template_fallback = False
-                _logger.info(
-                    "Master template loaded from Blob Storage (%d chars)",
-                    len(self._template),
-                )
-            except Exception:
-                _logger.warning(
-                    "Blob Storage unavailable — loading template from local file"
-                )
-                import os
-                template_path = os.path.join(
-                    os.path.dirname(os.path.dirname(__file__)),
-                    "template", "master_resume.tex",
-                )
-                with open(template_path, "r", encoding="utf-8") as f:
-                    self._template = f.read()
-                self._template_fallback = True
-                _logger.info(
-                    "Master template loaded from local file (%d chars)",
-                    len(self._template),
-                )
+            import os
+            template_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                "template", "master_resume.tex",
+            )
+            with open(template_path, "r", encoding="utf-8") as f:
+                self._template = f.read()
+            _logger.info("Master template loaded (%d chars)", len(self._template))
         return self._template
-
-    @property
-    def is_template_fallback(self) -> bool:
-        """True if the template was loaded from local fallback instead of Blob."""
-        return self._template_fallback
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -171,8 +158,8 @@ class Container:
             await self._db.close()
             _logger.info("DatabasePool closed")
 
-        if self._blob is not None:
-            await self._blob.close()
-            _logger.info("BlobClient closed")
+        if self._latex_mcp is not None:
+            await self._latex_mcp.close()
+            _logger.info("LatexMcpClient closed")
 
         _logger.info("Container disposed")
