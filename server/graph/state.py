@@ -69,6 +69,9 @@ class ResumeState(TypedDict, total=False):
     latex_valid: bool
     validation_errors: list[str]
     latex_fix_attempts: int
+    # Section names ("summary"/"experience"/"projects"/"skills") downgraded to
+    # plain text by N9 after exhausting fix attempts via N9r.
+    degraded_sections: Annotated[list[str], operator.add]
 
     # --- PDF (N10 pdf_stage output — via PdfCompilationService/LaTeX MCP) ---
     pdf_bytes: bytes

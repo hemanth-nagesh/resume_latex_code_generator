@@ -197,11 +197,13 @@ class TestN9Validator:
         assert results[0]["arg_count"] == 1
 
     def test_schema_completeness(self):
-        """Schema must cover core custom commands from template.
-        \resumeProjectHeading is excluded — its arity varies (2 or 3 args)."""
+        """Schema must cover core custom commands from template, including
+        \resumeProjectHeading which always takes exactly 2 args per
+        \newcommand{\resumeProjectHeading}[2] in template/master_resume.tex."""
         assert CUSTOM_COMMAND_SCHEMA == {
             r"\resumeItem": 1,
             r"\resumeSubheading": 4,
+            r"\resumeProjectHeading": 2,
         }
 
     def test_multiple_commands_in_one_line(self):

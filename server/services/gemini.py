@@ -24,6 +24,9 @@ RETRYABLE_ERRORS = (
     "INTERNAL",
 )
 
+# Sane upper bound on any single backoff sleep, even if Gemini suggests longer.
+MAX_BACKOFF_SECONDS = 60.0
+
 
 class GeminiError(Exception):
     """Raised when Gemini returns a non-retryable error or max retries exhausted."""
@@ -31,6 +34,17 @@ class GeminiError(Exception):
     def __init__(self, message: str, status: str | None = None) -> None:
         super().__init__(message)
         self.status = status
+
+
+class _RetryableJsonParseError(GeminiError):
+    """Internal marker: a JSON-parse failure that `generate()` should retry.
+
+    Raised by `_extract_json` in place of a plain `GeminiError` so that the
+    retry loop in `generate()` can distinguish "model returned malformed
+    JSON" (retryable, within `max_retries`) from other `GeminiError`s such as
+    an empty response (non-retryable). Still an instance of `GeminiError`, so
+    any external code catching `GeminiError` continues to work unchanged.
+    """
 
 
 class GeminiClient:
@@ -88,9 +102,9 @@ class GeminiClient:
         last_error: Exception | None = None
         retry_status: str | None = None
         tried_fallback = False
+        current_model = model or self._default_model
 
         for attempt in range(max_retries + 1):
-            current_model = model or self._default_model
             try:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(
@@ -123,6 +137,14 @@ class GeminiClient:
                     "Gemini call timed out (attempt %d/%d)", attempt + 1, max_retries + 1
                 )
 
+            except _RetryableJsonParseError as e:
+                last_error = e
+                retry_status = None
+                _logger.warning(
+                    "Gemini returned malformed JSON (attempt %d/%d): %s",
+                    attempt + 1, max_retries + 1, e,
+                )
+
             except GeminiError:
                 raise  # Non-retryable
 
@@ -139,7 +161,7 @@ class GeminiClient:
                         "Gemini %s %s — switching to fallback model %s (attempt %d/%d)",
                         current_model, retry_status, self._fallback_model, attempt + 1, max_retries + 1,
                     )
-                    self._default_model = self._fallback_model
+                    current_model = self._fallback_model
                     continue  # retry immediately with fallback model
 
                 _logger.warning(
@@ -148,8 +170,15 @@ class GeminiClient:
                 )
 
             if attempt < max_retries:
-                backoff = 2 ** attempt
-                _logger.info("Backing off %.1fs before retry %d", backoff, attempt + 1)
+                delay = _extract_retry_delay(last_error)
+                backoff = delay if delay is not None else 2 ** attempt
+                backoff = min(backoff, MAX_BACKOFF_SECONDS)
+                _logger.info(
+                    "Backing off %.1fs before retry %d%s",
+                    backoff,
+                    attempt + 1,
+                    " (Gemini-suggested delay)" if delay is not None else "",
+                )
                 await asyncio.sleep(backoff)
 
         raise GeminiError(
@@ -169,7 +198,9 @@ class GeminiClient:
         try:
             json_lib.loads(text)
         except json_lib.JSONDecodeError as exc:
-            raise GeminiError(f"Gemini returned invalid JSON: {exc}") from exc
+            raise _RetryableJsonParseError(
+                f"Gemini returned invalid JSON: {exc}"
+            ) from exc
         return text
 
 

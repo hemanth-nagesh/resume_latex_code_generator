@@ -78,7 +78,19 @@ def build_graph(
     graph.add_edge("n7d_skills_gen", "n8_latex_assembler")
 
     graph.add_edge("n8_latex_assembler", "n9_latex_validator")
-    graph.add_edge("n9_latex_validator", "n10_pdf_stage")
+
+    # N9 -> N10 if valid, else N9 -> N9r for a bounded fix attempt.
+    graph.add_conditional_edges(
+        "n9_latex_validator",
+        _after_validation,
+        {
+            "n10_pdf_stage": "n10_pdf_stage",
+            "n9r_latex_fixer": "n9r_latex_fixer",
+        },
+    )
+    # N9r always routes back to N9 for revalidation.
+    graph.add_edge("n9r_latex_fixer", "n9_latex_validator")
+
     graph.add_edge("n10_pdf_stage", "n12_response_builder")
     graph.add_edge("n12_response_builder", END)
 
@@ -97,7 +109,7 @@ def _register_nodes(graph: StateGraph, container: Container) -> None:
         n1_session, n2_input, n3_jd_analyzer, n4_kg_loader,
         n5_scorer, n6_selector,
         n7a_summary, n7b_experience, n7c_projects, n7d_skills,
-        n8_assembler, n9_validator, n10_pdf_stage,
+        n8_assembler, n9_validator, n9r_fixer, n10_pdf_stage,
         n12_response,
     )
 
@@ -146,6 +158,10 @@ def _register_nodes(graph: StateGraph, container: Container) -> None:
     async def _n9(state: ResumeState) -> ResumeState:
         return await n9_validator.run(state)
 
+    # N9r: gemini — Call 6 (LaTeX fix)
+    async def _n9r(state: ResumeState) -> ResumeState:
+        return await n9r_fixer.run(state, gemini=container.gemini_for(6))
+
     # N10: LaTeX MCP client + Blob + DB (via PdfCompilationService)
     async def _n10(state: ResumeState) -> ResumeState:
         return await n10_pdf_stage.run(state, service=container.pdf_service, db=container.db)
@@ -166,6 +182,7 @@ def _register_nodes(graph: StateGraph, container: Container) -> None:
     graph.add_node("n7d_skills_gen", _n7d)
     graph.add_node("n8_latex_assembler", _n8)
     graph.add_node("n9_latex_validator", _n9)
+    graph.add_node("n9r_latex_fixer", _n9r)
     graph.add_node("n10_pdf_stage", _n10)
     graph.add_node("n12_response_builder", _n12)
 
@@ -193,3 +210,21 @@ def _fan_out_n7(state: ResumeState) -> list[str]:
         "n7c_projects_gen",
         "n7d_skills_gen",
     ]
+
+
+def _after_validation(
+    state: ResumeState,
+) -> Literal["n10_pdf_stage", "n9r_latex_fixer"]:
+    """After N9: route to N10 if valid, else to N9r for a fix attempt.
+
+    By the time this router runs, `latex_valid` is always a reliable
+    two-way signal: N9's own `run()` already bounds the retry loop via
+    `latex_fix_attempts` vs `MAX_FIX_ATTEMPTS` internally — when attempts
+    are exhausted it either degrades sections and returns `latex_valid=True`
+    (routes here to N10) or raises (propagates out, never reaches this
+    router at all). So this router does not need its own attempt-counting
+    logic.
+    """
+    if state.get("latex_valid", False):
+        return "n10_pdf_stage"
+    return "n9r_latex_fixer"

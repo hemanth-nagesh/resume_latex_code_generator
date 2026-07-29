@@ -30,11 +30,16 @@ async def run(state: ResumeState) -> ResumeState:
     projects = kg.get("projects", [])
     skills = kg.get("skills", [])
 
-    if not projects:
-        raise ValueError("No projects found in knowledge graph — check N4 loader")
-
     if not jd_profile:
         raise ValueError("No JD profile available — check N3 analyzer")
+
+    if not projects:
+        return ResumeState(
+            ranked_projects=[],
+            warnings=[
+                "No projects available for scoring — resume will omit project-based content."
+            ],
+        )
 
     # Build skill index (name → skill dict) for primary skill resolution
     skill_index: dict[str, dict] = {}

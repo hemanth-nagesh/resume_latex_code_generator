@@ -179,35 +179,42 @@ def order_skills_for_display(
         List of skill dicts with display_name and category, ordered for
         consumption by N7d.
     """
-    required_names = {
-        s["skill"].lower() for s in jd_profile.get("required_skills", [])
-    }
-    preferred_names = {
-        s["skill"].lower() for s in jd_profile.get("preferred_skills", [])
-    }
+    required_names = [s["skill"] for s in jd_profile.get("required_skills", [])]
+    preferred_names = [s["skill"] for s in jd_profile.get("preferred_skills", [])]
 
-    covered_lower = {s.lower() for s in covered_skills}
+    def resolve_kg_skill(covered_name: str) -> dict[str, Any] | None:
+        for kg_skill in kg_skills:
+            if _skill_matches(covered_name, kg_skill["name"]):
+                return kg_skill
+        return None
 
-    skill_lookup: dict[str, dict[str, Any]] = {}
-    for s in kg_skills:
-        skill_lookup[s["name"].lower()] = s
+    def is_in(covered_name: str, name_list: list[str]) -> bool:
+        return any(_skill_matches(covered_name, n) for n in name_list)
 
     ordered: list[dict[str, Any]] = []
 
     # Tier 1: required + covered
-    for name_lower in covered_lower & required_names:
-        if name_lower in skill_lookup:
-            ordered.append(skill_lookup[name_lower])
+    for name in covered_skills:
+        if is_in(name, required_names) and resolve_kg_skill(name) is not None:
+            ordered.append(resolve_kg_skill(name))  # type: ignore[arg-type]
 
-    # Tier 2: preferred + covered
-    for name_lower in covered_lower & preferred_names:
-        if name_lower not in required_names and name_lower in skill_lookup:
-            ordered.append(skill_lookup[name_lower])
+    # Tier 2: preferred + covered (not already required)
+    for name in covered_skills:
+        if (
+            is_in(name, preferred_names)
+            and not is_in(name, required_names)
+            and resolve_kg_skill(name) is not None
+        ):
+            ordered.append(resolve_kg_skill(name))  # type: ignore[arg-type]
 
     # Tier 3: other covered skills
-    for name_lower in covered_lower:
-        if name_lower not in required_names and name_lower not in preferred_names and name_lower in skill_lookup:
-            ordered.append(skill_lookup[name_lower])
+    for name in covered_skills:
+        if (
+            not is_in(name, required_names)
+            and not is_in(name, preferred_names)
+            and resolve_kg_skill(name) is not None
+        ):
+            ordered.append(resolve_kg_skill(name))  # type: ignore[arg-type]
 
     # Group by category
     by_category: dict[str, list[dict[str, Any]]] = {}
@@ -222,7 +229,7 @@ def order_skills_for_display(
 
     for cat, skills_list in by_category.items():
         is_priority = any(
-            s["name"].lower() in required_names for s in skills_list
+            is_in(s["name"], required_names) for s in skills_list
         )
         if is_priority:
             priority_categories.append((cat, skills_list))

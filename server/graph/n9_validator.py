@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 from server.graph.state import ResumeState
 from server.services.latex_utils import (
@@ -23,9 +24,25 @@ from server.services.latex_utils import (
     check_environment_matching,
     check_placeholders,
     parse_custom_command_args,
+    strip_latex_commands,
 )
 
 _logger = logging.getLogger(__name__)
+
+# Bound on N9r fix attempts before N9 falls back to plain-text section
+# degradation. Mirrors n9r_fixer.py's docstring-implied max of 2.
+MAX_FIX_ATTEMPTS = 2
+
+
+class LatexDegradationError(Exception):
+    """Raised when the assembled LaTeX is still invalid after N9r's fix
+    attempts have been exhausted AND plain-text degradation of the
+    implicated sections still fails full validation.
+
+    Left uncaught here by design — it propagates out of the node and is
+    caught by `_run_pipeline`'s existing `except Exception` handler in
+    `server/api/generate.py`, which surfaces it as a `pipeline_error`.
+    """
 
 # ---------------------------------------------------------------------------
 # CUSTOM COMMAND SCHEMA — mirrors definitions in template/master_resume.tex
@@ -39,24 +56,127 @@ _logger = logging.getLogger(__name__)
 CUSTOM_COMMAND_SCHEMA: dict[str, int] = {
     r"\resumeItem":           1,   # {bullet text}
     r"\resumeSubheading":     4,   # {company}{date}{role}{location}
-    # \resumeProjectHeading is variadic — accepts both 2-arg {title}{date}
-    # and the Gemini-preferred 3-arg {\textbf{X}| \emph{Y}}{{stack}}{{date}}.
-    # Disabled from schema validation to avoid false positives.
+    r"\resumeProjectHeading": 2,   # {title}{date} — confirmed exactly 2 args
+                                    # per \newcommand{\resumeProjectHeading}[2]
+                                    # in template/master_resume.tex.
 }
 
+# ---------------------------------------------------------------------------
+# SECTION ANCHORS — used by map_errors_to_sections() to locate where each
+# AI-generated content block landed in the fully-assembled latex_source.
+#
+# N8 (see server/graph/n8_assembler.py) substitutes AI-generated content into
+# fixed slots via str.replace() on the locked template/master_resume.tex. By
+# the time N9 runs, the %%PLACEHOLDER%% markers are already gone — but the
+# \section{...} headers that immediately precede each slot are part of the
+# locked template and are NEVER touched by AI, so they remain a stable,
+# deterministic anchor for locating each block's line range in the final
+# assembled document. EDUCATION marks the end of the AI-generated skills
+# block (EDUCATION_BLOCK and CERTIFICATIONS_BLOCK are NOT AI-generated and
+# are intentionally excluded from the mapped section names).
+# ---------------------------------------------------------------------------
+_SECTION_NAMES: tuple[str, ...] = ("summary", "experience", "projects", "skills")
 
-async def run(state: ResumeState) -> ResumeState:
-    """Validate assembled LaTeX. Sets state.latex_valid and state.validation_errors.
+_SECTION_ANCHOR_ORDER: tuple[str, ...] = (
+    "summary", "experience", "projects", "skills", "__end__",
+)
 
-    If valid → routes to N10 (pdf_compiler)
-    If invalid → routes to N9r (latex_fixer)
+_SECTION_ANCHOR_PATTERNS: dict[str, str] = {
+    "summary":    r"\\section\{PROFESSIONAL SUMMARY\}",
+    "experience": r"\\section\{EXPERIENCE\}",
+    "projects":   r"\\section\{PROJECTS\}",
+    "skills":     r"\\section\{TECHNICAL SKILLS\}",
+    "__end__":    r"\\section\{EDUCATION\}",
+}
+
+# Matches the "line {n}:" prefix produced by this module's check functions
+# (e.g. "line 42: \resumeSubheading expected 4 args, got 3"). A single error
+# string may contain multiple such references joined by "; "
+# (see _check_custom_command_schema's "; ".join(errors[:5])).
+_LINE_REF_RE = re.compile(r"line (\d+):")
+
+
+def _locate_section_line_ranges(latex_source: str) -> dict[str, tuple[int, int]]:
+    """Find the 1-indexed [start, end] line range of each AI-generated
+    section's content block within the fully-assembled latex_source, by
+    locating the fixed \\section{...} anchors that bound each slot.
+
+    A section's range starts at its own \\section{...} header line and ends
+    one line before the next-known anchor (or at the end of the document if
+    no later anchor is found). Missing anchors simply omit that section from
+    the returned mapping — callers must not assume all four keys are present.
     """
-    latex_source = state.get("latex_source", "")
+    lines = latex_source.split("\n")
+    total_lines = len(lines)
 
-    if not latex_source:
-        return ResumeState(latex_valid=False, validation_errors=["No LaTeX source to validate"])
+    anchor_lines: dict[str, int] = {}
+    for name in _SECTION_ANCHOR_ORDER:
+        pattern = _SECTION_ANCHOR_PATTERNS[name]
+        for idx, line in enumerate(lines, start=1):
+            if re.search(pattern, line):
+                anchor_lines[name] = idx
+                break
 
-    # Run all checks concurrently
+    ranges: dict[str, tuple[int, int]] = {}
+    for pos, name in enumerate(_SECTION_NAMES):
+        start = anchor_lines.get(name)
+        if start is None:
+            continue
+        end = total_lines
+        for later_name in _SECTION_ANCHOR_ORDER[pos + 1:]:
+            later_start = anchor_lines.get(later_name)
+            if later_start is not None:
+                end = later_start - 1
+                break
+        ranges[name] = (start, end)
+
+    return ranges
+
+
+def map_errors_to_sections(errors: list[str], latex_source: str) -> list[str]:
+    """Maps validation error strings (which include line numbers) to the
+    resume section (summary/experience/projects/skills) whose generated
+    content block contains that line. Errors that fall outside any known
+    section marker are treated as affecting the whole document and are NOT
+    individually degradable — in that case degradation is skipped for those
+    lines and the section list only contains sections that were concretely
+    identified.
+
+    Preconditions: `errors` follow the existing "line {n}: {message}" format
+    produced by this module's check functions; entries may contain zero,
+    one, or multiple "line {n}:" references (joined by "; ").
+
+    Postconditions: returned list contains only values from
+    {"summary", "experience", "projects", "skills"}, each appearing at most
+    once, ordered by first occurrence across `errors` (and, within a single
+    error string, by first occurrence of its embedded line references).
+    """
+    ranges = _locate_section_line_ranges(latex_source)
+
+    result: list[str] = []
+    for error in errors:
+        for line_no_str in _LINE_REF_RE.findall(error):
+            line_no = int(line_no_str)
+            for section_name in _SECTION_NAMES:
+                section_range = ranges.get(section_name)
+                if section_range is None:
+                    continue
+                start, end = section_range
+                if start <= line_no <= end:
+                    if section_name not in result:
+                        result.append(section_name)
+                    break
+
+    return result
+
+
+async def _run_validation_checks(latex_source: str) -> list[str]:
+    """Run all 5 validation checks concurrently and collect error messages.
+
+    Extracted so both the initial validation pass and the post-degradation
+    revalidation pass share the exact same check logic without duplicating
+    the `asyncio.gather(...)` block.
+    """
     results = await asyncio.gather(
         _check_brace_balance(latex_source),
         _check_environment_matching(latex_source),
@@ -69,13 +189,105 @@ async def run(state: ResumeState) -> ResumeState:
     for ok, msg in results:
         if not ok and msg:
             errors.append(msg)
+    return errors
 
-    if errors:
-        _logger.warning("LaTeX validation failed: %d errors", len(errors))
-        return ResumeState(latex_valid=False, validation_errors=errors)
-    else:
+
+def _degrade_sections(latex_source: str, affected_sections: list[str]) -> str:
+    """Replace the content of each named section with its plain-text
+    equivalent (via `strip_latex_commands`), leaving every other line of
+    `latex_source` — preamble, other sections, template structure —
+    byte-identical.
+
+    Uses the same line-range logic as `map_errors_to_sections` to locate
+    each section's content boundaries.
+    """
+    ranges = _locate_section_line_ranges(latex_source)
+    lines = latex_source.split("\n")
+
+    # Replacing a slice with a single collapsed element can change the
+    # length of `lines` (e.g. a 3-line section degrades to 1 element).
+    # Ranges for every section were computed once against the *original*
+    # line numbering, so applying replacements in ascending line order
+    # would shift the indices of not-yet-processed sections. Applying them
+    # in descending order of start line keeps every not-yet-processed
+    # section's range valid, since a mutation only ever affects indices at
+    # or after its own start position.
+    ordered_sections = sorted(
+        (name for name in affected_sections if ranges.get(name) is not None),
+        key=lambda name: ranges[name][0],
+        reverse=True,
+    )
+
+    for section_name in ordered_sections:
+        start, end = ranges[section_name]
+        # start/end are 1-indexed inclusive; convert to 0-indexed slice.
+        section_lines = lines[start - 1:end]
+        degraded_content = strip_latex_commands("\n".join(section_lines))
+        lines[start - 1:end] = [degraded_content]
+
+    return "\n".join(lines)
+
+
+async def run(state: ResumeState) -> ResumeState:
+    """Validate assembled LaTeX. Sets state.latex_valid and state.validation_errors.
+
+    If valid → routes to N10 (pdf_compiler)
+    If invalid and fix attempts remain → routes to N9r (latex_fixer)
+    If invalid and fix attempts exhausted → degrades the implicated sections
+    to plain text and revalidates once; raises LatexDegradationError if the
+    degraded document still fails validation.
+    """
+    latex_source = state.get("latex_source", "")
+
+    if not latex_source:
+        return ResumeState(latex_valid=False, validation_errors=["No LaTeX source to validate"])
+
+    errors = await _run_validation_checks(latex_source)
+
+    if not errors:
         _logger.info("LaTeX validation passed")
         return ResumeState(latex_valid=True, validation_errors=[])
+
+    _logger.warning("LaTeX validation failed: %d errors", len(errors))
+
+    fix_attempts = state.get("latex_fix_attempts", 0)
+    if fix_attempts < MAX_FIX_ATTEMPTS:
+        return ResumeState(latex_valid=False, validation_errors=errors)
+
+    # Fix attempts exhausted — attempt plain-text degradation of only the
+    # sections implicated by the validation errors.
+    affected_sections = map_errors_to_sections(errors, latex_source)
+
+    if not affected_sections:
+        # No degradable sections identified (e.g. document-level errors
+        # with no line number, or lines outside all known section ranges).
+        # Nothing would change by re-running validation, so skip straight
+        # to the hard failure.
+        raise LatexDegradationError(
+            "LaTeX still invalid after " + str(MAX_FIX_ATTEMPTS) + " fix attempts, and no "
+            "sections could be mapped to the validation errors for plain-text "
+            "degradation: " + "; ".join(errors)
+        )
+
+    degraded_source = _degrade_sections(latex_source, affected_sections)
+    final_errors = await _run_validation_checks(degraded_source)
+
+    if not final_errors:
+        _logger.warning(
+            "LaTeX degraded to plain text for sections %s after exhausting fix attempts",
+            affected_sections,
+        )
+        return ResumeState(
+            latex_source=degraded_source,
+            latex_valid=True,
+            validation_errors=[],
+            degraded_sections=affected_sections,
+        )
+
+    raise LatexDegradationError(
+        "LaTeX still invalid after plain-text degradation of sections "
+        f"{affected_sections}: " + "; ".join(final_errors)
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -18,11 +18,19 @@ from __future__ import annotations
 import json
 import logging
 
+from pydantic import ValidationError
+
 from server.graph.state import ResumeState
 from server.services.gemini import GeminiClient
 from server.services.types import JDProfile
 
 _logger = logging.getLogger(__name__)
+
+
+class JDAnalysisError(Exception):
+    """Raised when Gemini's JD analysis response fails JDProfile validation
+    even after one retry attempt with the same prompt."""
+
 
 JD_ANALYZER_PROMPT = """You are a resume-matching expert. Extract structured information
 from the job description below. Be precise and factual — never invent details
@@ -84,22 +92,37 @@ async def run(
 
     prompt = JD_ANALYZER_PROMPT.format(jd_text=jd_text)
 
-    response = await gemini.generate(
-        prompt,
-        temperature=0.2,
-        expect_json=True,
-        max_retries=2,
-    )
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):
+        response = await gemini.generate(
+            prompt,
+            temperature=0.2,
+            expect_json=True,
+            max_retries=2,
+        )
 
-    raw = json.loads(response)
-    jd_profile = JDProfile(**raw)
+        raw = json.loads(response)
 
-    _logger.info(
-        "JD analysis complete: %d required skills, %d preferred, %s level, %s domain",
-        len(jd_profile.required_skills),
-        len(jd_profile.preferred_skills),
-        jd_profile.seniority_level,
-        jd_profile.domain,
-    )
+        try:
+            jd_profile = JDProfile(**raw)
+        except ValidationError as e:
+            if attempt == max_attempts:
+                raise JDAnalysisError(
+                    f"JD analysis produced an invalid profile after retry: {e}"
+                ) from e
+            _logger.warning(
+                "JDProfile validation failed on attempt %d, retrying: %s",
+                attempt,
+                e,
+            )
+            continue
 
-    return ResumeState(jd_profile=jd_profile.model_dump())
+        _logger.info(
+            "JD analysis complete: %d required skills, %d preferred, %s level, %s domain",
+            len(jd_profile.required_skills),
+            len(jd_profile.preferred_skills),
+            jd_profile.seniority_level,
+            jd_profile.domain,
+        )
+
+        return ResumeState(jd_profile=jd_profile.model_dump())
