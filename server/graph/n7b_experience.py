@@ -78,6 +78,8 @@ CRITICAL RULES:
 10. Never escape % signs in LaTeX — they are not comments in this context
 11. Roles should be in reverse-chronological order (most recent first)
 12. Never use first-person pronouns (I, me, my, we)
+13. CRITICAL: Always escape "&" as "\\&" in ALL text content.
+    Example: "R\\&D" NOT "R&D". Example: "AI \\& ML" NOT "AI & ML"
 
 Return ONLY the LaTeX commands, no markdown fences, no explanations."""
 

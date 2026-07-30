@@ -52,6 +52,19 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                 "Could not pre-fetch template on startup — will retry on first request"
             )
 
+        # Run database migrations on startup (creates tables if they don't exist)
+        try:
+            from server.db.migrations import run_migrations
+            await run_migrations(app.state.container.db)
+            _logger.info("Database migrations executed successfully on startup")
+            app.state.db_available = True
+        except Exception as e:
+            _logger.error(
+                "Database migration failed on startup — admin panel will show empty data. "
+                "Ensure DATABASE_URL is set correctly. Error: %s", e
+            )
+            app.state.db_available = False
+
         yield
 
         _logger.info("Shutting down...")

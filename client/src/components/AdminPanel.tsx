@@ -11,12 +11,76 @@ const EMPLOYMENT_TYPES = ['full-time', 'contract', 'freelance'];
 
 type Tab = 'projects' | 'skills' | 'roles' | 'certifications';
 
+interface DbStatus {
+  connected: boolean;
+  counts: Record<string, number>;
+  message: string;
+  needs_seed: boolean;
+  query_errors?: Record<string, string | null>;
+}
+
 export default function AdminPanel() {
   const [tab, setTab] = useState<Tab>('projects');
+  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  useEffect(() => {
+    api.getDbStatus()
+      .then(setDbStatus)
+      .catch(() => setDbStatus({ connected: false, counts: {}, message: 'Could not reach server', needs_seed: false }))
+      .finally(() => setStatusLoading(false));
+  }, []);
 
   return (
     <div className="admin-section">
       <div className="admin-title">⚙ Knowledge Graph Admin</div>
+
+      {/* DB connection status banner */}
+      {!statusLoading && dbStatus && !dbStatus.connected && (
+        <div style={{
+          background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8,
+          padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#991b1b',
+        }}>
+          <strong>Database Connection Error</strong>
+          <p style={{ margin: '4px 0 0' }}>{dbStatus.message}</p>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#b91c1c' }}>
+            Ensure <code>DATABASE_URL</code> is set correctly in your <code>.env</code> file and the database is accessible.
+          </p>
+        </div>
+      )}
+
+      {!statusLoading && dbStatus && dbStatus.connected && dbStatus.needs_seed && (
+        <div style={{
+          background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8,
+          padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#92400e',
+        }}>
+          <strong>Database is empty — seed required</strong>
+          <p style={{ margin: '4px 0 0' }}>
+            The database is connected but contains no data. Run the seed script to populate it:
+          </p>
+          <code style={{ display: 'block', margin: '8px 0 0', padding: '6px 10px', background: '#fef3c7', borderRadius: 4, fontSize: 12 }}>
+            python -m server.db.seed
+          </code>
+        </div>
+      )}
+
+      {!statusLoading && dbStatus && dbStatus.query_errors && Object.values(dbStatus.query_errors).some(Boolean) && (
+        <div style={{
+          background: '#fff7ed', border: '1px solid #fb923c', borderRadius: 8,
+          padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#9a3412',
+        }}>
+          <strong>Query errors detected</strong>
+          <p style={{ margin: '4px 0 0' }}>
+            The database is connected but queries are failing:
+          </p>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+            {Object.entries(dbStatus.query_errors).filter(([, v]) => v).map(([key, err]) => (
+              <li key={key}><strong>{key}:</strong> {err}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="tab-bar" style={{ marginBottom: 20 }}>
         {(['projects', 'skills', 'roles', 'certifications'] as Tab[]).map((t) => (
           <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
@@ -40,6 +104,7 @@ export default function AdminPanel() {
 function ProjectsManager() {
   const [items, setItems] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<ProjectForm>({
@@ -48,7 +113,8 @@ function ProjectsManager() {
   });
 
   const load = useCallback(async () => {
-    try { setItems(await api.listProjects()); } catch {}
+    try { setError(null); setItems(await api.listProjects()); }
+    catch (e: any) { setError(e.message || 'Failed to load projects'); }
     finally { setLoading(false); }
   }, []);
 
@@ -137,12 +203,14 @@ function ProjectsManager() {
 function SkillsManager() {
   const [items, setItems] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<SkillForm>({ name: '', display_name: '', category: 'technical', proficiency: 3 });
 
   const load = useCallback(async () => {
-    try { setItems(await api.listSkills()); } catch {}
+    try { setError(null); setItems(await api.listSkills()); }
+    catch (e: any) { setError(e.message || 'Failed to load skills'); }
     finally { setLoading(false); }
   }, []);
 
@@ -237,6 +305,7 @@ function SkillsManager() {
 function RolesManager() {
   const [items, setItems] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<RoleForm>({
@@ -245,7 +314,8 @@ function RolesManager() {
   });
 
   const load = useCallback(async () => {
-    try { setItems(await api.listRoles()); } catch {}
+    try { setError(null); setItems(await api.listRoles()); }
+    catch (e: any) { setError(e.message || 'Failed to load roles'); }
     finally { setLoading(false); }
   }, []);
 
@@ -334,11 +404,13 @@ function RolesManager() {
 function CertificationsManager() {
   const [items, setItems] = useState<Certification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CertificationForm>({ title: '', year: new Date().getFullYear(), description: '', url: '' });
 
   const load = useCallback(async () => {
-    try { setItems(await api.listCertifications()); } catch {}
+    try { setError(null); setItems(await api.listCertifications()); }
+    catch (e: any) { setError(e.message || 'Failed to load certifications'); }
     finally { setLoading(false); }
   }, []);
 

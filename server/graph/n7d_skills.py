@@ -55,6 +55,10 @@ CRITICAL RULES:
 8. Categories should appear in the order given — most relevant first
 9. Never use % as a comment character — it breaks LaTeX
 10. NEVER escape regular characters in the output
+11. CRITICAL: If a category name contains "&", you MUST escape it as "\\&"
+    Example: "Frameworks \\& Libraries" NOT "Frameworks & Libraries"
+    Example: "Gen AI \\& Agentic AI" NOT "Gen AI & Agentic AI"
+12. ALWAYS use \\& instead of raw & in ANY text content
 
 Return ONLY the formatted \\textbf{{}} lines, no markdown fences, no explanations."""
 
