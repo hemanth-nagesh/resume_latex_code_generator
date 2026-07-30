@@ -19,6 +19,15 @@ async function req(path: string, method: string, body?: unknown): Promise<unknow
   return res.status === 204 ? null : res.json();
 }
 
+// DB Status
+export const getDbStatus = () => req('/db-status', 'GET') as Promise<{
+  connected: boolean;
+  counts: Record<string, number>;
+  message: string;
+  needs_seed: boolean;
+  query_errors?: Record<string, string | null>;
+}>;
+
 // Skills
 export const listSkills = () => req('/skills', 'GET') as Promise<Skill[]>;
 export const createSkill = (data: object) => req('/skills', 'POST', data) as Promise<Skill>;

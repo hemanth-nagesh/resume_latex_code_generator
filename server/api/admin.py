@@ -34,14 +34,24 @@ router = APIRouter(
 
 
 def _db_safe_read(default):
-    """Decorator: catch DB errors on GET endpoints, return default fallback."""
+    """Decorator: catch DB errors on GET endpoints, return default fallback.
+
+    In development, the full exception is logged at ERROR level so
+    the root cause is visible in server logs.
+    """
     def deco(fn):
         @wraps(fn)
         async def wrapper(*args, **kwargs):
             try:
                 return await fn(*args, **kwargs)
             except Exception as e:
-                _logger.warning("DB unavailable on %s — returning fallback: %s", fn.__name__, e)
+                _logger.error(
+                    "DB query failed on %s — returning fallback %r. "
+                    "Check DATABASE_URL configuration and run 'python -m server.db.seed' if needed. "
+                    "Exception type: %s, Error: %s",
+                    fn.__name__, default, type(e).__name__, e,
+                    exc_info=True,
+                )
                 return default
         return wrapper
     return deco
@@ -50,6 +60,63 @@ def _db_safe_read(default):
 def _container(request: Request) -> Container:
     """Get Container from app state."""
     return request.app.state.container
+
+
+@router.get("/db-status")
+async def db_status(request: Request) -> dict[str, Any]:
+    """Check database connectivity and report table counts.
+
+    Also attempts to run the actual list_projects query to catch
+    serialization or query-level errors.
+
+    Returns connection status and row counts for each knowledge graph table.
+    Useful for diagnosing 'empty admin panel' issues.
+    """
+    container = _container(request)
+    result: dict[str, Any] = {
+        "connected": False,
+        "counts": {"projects": 0, "skills": 0, "roles": 0, "certifications": 0},
+        "message": "",
+        "needs_seed": False,
+        "query_errors": {},
+    }
+
+    # Step 1: Check basic connectivity and counts
+    try:
+        for table in ["projects", "skills", "roles", "certifications"]:
+            row = await container.db.fetchrow(
+                f"SELECT count(*) as cnt FROM {table} WHERE is_active = true"
+            )
+            result["counts"][table] = row["cnt"] if row else 0
+
+        result["connected"] = True
+        result["needs_seed"] = all(c == 0 for c in result["counts"].values())
+    except Exception as e:
+        _logger.error("DB health check — connectivity failed: %s", e)
+        result["message"] = f"Database connection failed: {type(e).__name__}: {str(e)[:200]}"
+        return result
+
+    # Step 2: Try the actual queries to catch query-level errors
+    try:
+        projects = await queries.list_projects(container.db)
+        result["query_errors"]["projects"] = None
+        result["counts"]["projects_returned"] = len(projects)
+    except Exception as e:
+        result["query_errors"]["projects"] = f"{type(e).__name__}: {str(e)[:200]}"
+
+    try:
+        skills = await queries.list_skills(container.db)
+        result["query_errors"]["skills"] = None
+        result["counts"]["skills_returned"] = len(skills)
+    except Exception as e:
+        result["query_errors"]["skills"] = f"{type(e).__name__}: {str(e)[:200]}"
+
+    if result["connected"] and not any(result["query_errors"].values()):
+        result["message"] = "Database connected and queries successful"
+    elif result["connected"]:
+        result["message"] = "Database connected but some queries failed — check query_errors"
+
+    return result
 
 
 # ===========================================================================
