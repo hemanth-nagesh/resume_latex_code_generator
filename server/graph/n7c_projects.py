@@ -81,6 +81,8 @@ CRITICAL RULES:
 9. NEVER escape % signs in LaTeX bullet text
 10. If a project's end_date is null/None, use "Present" as the end date
 11. Projects should appear in the order provided — highest relevance first
+12. CRITICAL: Always escape "&" as "\\&" in ALL text content.
+    Example: "R\\&D" NOT "R&D". Example: "AI \\& ML" NOT "AI & ML"
 
 Return ONLY the LaTeX commands, no markdown fences, no explanations."""
 

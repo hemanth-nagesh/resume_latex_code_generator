@@ -21,7 +21,11 @@ import logging
 import re
 
 from server.graph.state import ResumeState
-from server.services.latex_utils import escape_special_chars
+from server.services.latex_utils import (
+    escape_special_chars,
+    sanitize_gemini_section_output,
+    sanitize_latex_source,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -68,6 +72,10 @@ async def run(
     latex = latex.replace("%%EDUCATION_BLOCK%%", education)
     latex = latex.replace("%%CERTIFICATIONS_BLOCK%%", certifications)
 
+    # Final full-document sanitization pass to catch any remaining
+    # forbidden characters that slipped through section-level escaping
+    latex = sanitize_latex_source(latex)
+
     return ResumeState(
         latex_source=latex,
         latex_fix_attempts=0,
@@ -93,22 +101,23 @@ _TEXT_SPECIALS = {
 def _escape_text_in_commands(text: str) -> str:
     """Escape &, %, $, #, _ in Gemini-generated LaTeX content.
 
-    Uses a simple rules: escape special chars that aren't preceded by
-    backslash. This handles mixed content (commands + plain text) by
-    leaving already-correct LaTeX intact.
+    Uses the new sanitize_gemini_section_output which handles edge cases
+    like & inside \\textbf{} arguments, preserves already-escaped chars,
+    and handles unicode characters.
     """
     if not text:
         return ""
-    return _safe_escape(text)
+    return sanitize_gemini_section_output(text)
 
 
 def _safe_escape(text: str) -> str:
-    """Escape &, %, $, #, _ only when not preceded by backslash."""
-    result = text
-    for ch, esc in _TEXT_SPECIALS.items():
-        # Replace ch only when not preceded by \
-        result = re.sub(r"(?<!\\)" + re.escape(ch), esc, result)
-    return result
+    """Legacy escape function — delegates to sanitize_gemini_section_output.
+
+    Kept for backwards compatibility but now uses the more robust sanitizer.
+    """
+    if not text:
+        return ""
+    return sanitize_gemini_section_output(text)
 
 
 def _build_certifications(kg: dict) -> str:

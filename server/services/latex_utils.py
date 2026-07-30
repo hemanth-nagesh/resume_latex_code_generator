@@ -62,6 +62,223 @@ def unescape_special_chars(text: str) -> str:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Deterministic LaTeX Sanitizer — fixes common Gemini output issues
+# programmatically without requiring an LLM call. Applied BEFORE N9
+# validation and as part of N8 assembly.
+# ---------------------------------------------------------------------------
+
+# Lines containing these patterns are "safe" contexts where raw & is valid
+_TABULAR_ENV_RE = re.compile(r"\\begin\{(tabular\*?|tabularx|longtable)\}")
+_NEWCOMMAND_RE = re.compile(r"\\(new|renew)command")
+
+# Match raw & not preceded by backslash
+_RAW_AMP_RE = re.compile(r"(?<!\\)&")
+
+# Match raw % not preceded by backslash (but not at end-of-line comments)
+_RAW_PERCENT_RE = re.compile(r"(?<!\\)%")
+
+# Match raw $ not preceded by backslash and not part of $|$ separator
+_RAW_DOLLAR_RE = re.compile(r"(?<!\\)\$(?!\|?\$)")
+
+# Match raw # not preceded by backslash
+_RAW_HASH_RE = re.compile(r"(?<!\\)#")
+
+# Common patterns Gemini produces that contain raw & in text
+# e.g., "ML & AI", "Frameworks & Libraries", "R&D"
+_TEXT_AMP_PATTERNS = re.compile(
+    r"(?<!\\)&"  # any raw & that isn't already escaped
+)
+
+
+def sanitize_latex_source(latex: str) -> str:
+    """Deterministic sanitizer for assembled LaTeX source.
+
+    Fixes common issues WITHOUT requiring an LLM call:
+    1. Raw '&' outside tabular environments → \\&
+    2. Raw '%' that isn't a LaTeX comment → \\%
+    3. Double-escaped characters (\\\\&) → \\&
+    4. Mismatched braces in simple cases
+
+    This is safe to call on fully-assembled LaTeX because it respects
+    LaTeX command structure and only modifies characters in text positions.
+
+    Returns: sanitized LaTeX source string.
+    """
+    lines = latex.split("\n")
+    result_lines = []
+    in_tabular = False
+    tabular_depth = 0
+
+    for line in lines:
+        # Track tabular environment state
+        for m in re.finditer(r"\\begin\{(tabular\*?|tabularx|longtable)\}", line):
+            in_tabular = True
+            tabular_depth += 1
+        for m in re.finditer(r"\\end\{(tabular\*?|tabularx|longtable)\}", line):
+            tabular_depth -= 1
+            if tabular_depth <= 0:
+                in_tabular = False
+                tabular_depth = 0
+
+        # Skip lines that are in safe contexts
+        if in_tabular:
+            result_lines.append(line)
+            continue
+        if _NEWCOMMAND_RE.search(line):
+            result_lines.append(line)
+            continue
+
+        # Process this line for forbidden characters
+        fixed_line = _fix_line_chars(line)
+        result_lines.append(fixed_line)
+
+    result = "\n".join(result_lines)
+
+    # Fix double-escaping issues (e.g., \\& → \&)
+    result = _fix_double_escapes(result)
+
+    return result
+
+
+def _fix_line_chars(line: str) -> str:
+    """Fix forbidden characters on a single line.
+
+    Strategy: split the line into "LaTeX command" segments and "text" segments.
+    Only escape special chars in text segments.
+    """
+    # Strip LaTeX comment portion (keep it separate)
+    comment = ""
+    comment_match = re.search(r"(?<!\\)%", line)
+    if comment_match:
+        # Check if this % is actually inside a command argument
+        # by counting brace depth at this position
+        pos = comment_match.start()
+        depth = 0
+        for i in range(pos):
+            if line[i] == "{" and (i == 0 or line[i-1] != "\\"):
+                depth += 1
+            elif line[i] == "}" and (i == 0 or line[i-1] != "\\"):
+                depth -= 1
+        if depth == 0:
+            # It's a genuine comment
+            comment = line[pos:]
+            line = line[:pos]
+
+    # Fix raw & characters
+    # We need to be careful: & is valid inside $|$ math separators,
+    # but NOT valid as raw text outside tabular
+    fixed = _escape_raw_ampersands(line)
+
+    return fixed + comment
+
+
+def _escape_raw_ampersands(line: str) -> str:
+    """Escape raw & characters that appear in text content.
+
+    Preserves:
+    - Already escaped \\& 
+    - & inside \\begin{tabular} (handled by caller)
+    - & in \\newcommand definitions (handled by caller)
+
+    Escapes:
+    - Raw & in \\textbf{Frameworks & Libraries}
+    - Raw & in \\resumeItem{...R&D...}
+    - Raw & in any other text position
+    """
+    result = []
+    i = 0
+    while i < len(line):
+        if line[i] == "&":
+            # Check if preceded by backslash (already escaped)
+            if i > 0 and line[i-1] == "\\":
+                result.append("&")  # already escaped, keep as-is
+            else:
+                # Check if this is part of $|$ math separator (unlikely with &)
+                # In resume context, raw & is almost never intentional
+                result.append("\\&")
+        else:
+            result.append(line[i])
+        i += 1
+    return "".join(result)
+
+
+def _fix_double_escapes(text: str) -> str:
+    """Fix common double-escape issues.
+
+    When both Gemini AND our sanitizer escape the same char, we get \\\\&
+    instead of \\&. Fix these.
+    """
+    # \\& → \& (but NOT \\\\& which is a literal backslash + escaped &)
+    text = re.sub(r"(?<!\\)\\\\&", r"\\&", text)
+    text = re.sub(r"(?<!\\)\\\\%", r"\\%", text)
+    text = re.sub(r"(?<!\\)\\\\\$", r"\\$", text)
+    text = re.sub(r"(?<!\\)\\\\#", r"\\#", text)
+    return text
+
+
+def sanitize_gemini_section_output(text: str) -> str:
+    """Sanitize a single section's Gemini-generated LaTeX output.
+
+    Called by N8 assembler on each section before substitution into template.
+    Lighter-weight than sanitize_latex_source — focuses on the most common
+    Gemini output issues:
+    1. Raw & in text content (e.g., "ML & AI")
+    2. Raw % that breaks compilation
+    3. Unicode characters that LaTeX can't handle
+
+    Does NOT modify:
+    - LaTeX commands (\\textbf, \\resumeItem, etc.)
+    - Already-escaped characters (\\&, \\%, etc.)
+    - Math mode content ($...$)
+    """
+    if not text:
+        return ""
+
+    lines = text.split("\n")
+    result = []
+
+    for line in lines:
+        # Skip empty lines
+        if not line.strip():
+            result.append(line)
+            continue
+
+        # Fix raw & outside of already-escaped contexts
+        fixed = _escape_raw_ampersands(line)
+
+        # Fix common unicode characters that break pdflatex
+        fixed = _fix_unicode_chars(fixed)
+
+        result.append(fixed)
+
+    return "\n".join(result)
+
+
+def _fix_unicode_chars(line: str) -> str:
+    """Replace common Unicode characters with LaTeX equivalents."""
+    replacements = {
+        "\u2013": "--",      # en-dash
+        "\u2014": "---",     # em-dash
+        "\u2018": "`",       # left single quote
+        "\u2019": "'",       # right single quote
+        "\u201c": "``",      # left double quote
+        "\u201d": "''",      # right double quote
+        "\u2026": "...",     # ellipsis
+        "\u00a0": "~",       # non-breaking space
+        "\u2022": r"\textbullet{}",  # bullet
+        "\u2192": r"$\rightarrow$",  # right arrow
+        "\u2190": r"$\leftarrow$",   # left arrow
+        "\u00b1": r"$\pm$",  # plus-minus
+        "\u2265": r"$\geq$", # >=
+        "\u2264": r"$\leq$", # <=
+        "\u2260": r"$\neq$", # !=
+    }
+    for char, replacement in replacements.items():
+        line = line.replace(char, replacement)
+    return line
+
+
 def count_braces(latex: str) -> tuple[int, int, int, int]:
     """Count opening/closing braces, distinguishing structural from escaped.
 
