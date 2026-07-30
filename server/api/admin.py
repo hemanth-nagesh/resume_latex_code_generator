@@ -41,7 +41,11 @@ def _db_safe_read(default):
             try:
                 return await fn(*args, **kwargs)
             except Exception as e:
-                _logger.warning("DB unavailable on %s — returning fallback: %s", fn.__name__, e)
+                _logger.warning(
+                    "DB unavailable on %s — returning fallback. "
+                    "Check DATABASE_URL configuration and run seed if needed. Error: %s",
+                    fn.__name__, e,
+                )
                 return default
         return wrapper
     return deco
@@ -50,6 +54,38 @@ def _db_safe_read(default):
 def _container(request: Request) -> Container:
     """Get Container from app state."""
     return request.app.state.container
+
+
+@router.get("/db-status")
+async def db_status(request: Request) -> dict[str, Any]:
+    """Check database connectivity and report table counts.
+
+    Returns connection status and row counts for each knowledge graph table.
+    Useful for diagnosing 'empty admin panel' issues.
+    """
+    container = _container(request)
+    try:
+        counts = {}
+        for table in ["projects", "skills", "roles", "certifications"]:
+            row = await container.db.fetchrow(
+                f"SELECT count(*) as cnt FROM {table} WHERE is_active = true"
+            )
+            counts[table] = row["cnt"] if row else 0
+
+        return {
+            "connected": True,
+            "counts": counts,
+            "message": "Database connected successfully",
+            "needs_seed": all(c == 0 for c in counts.values()),
+        }
+    except Exception as e:
+        _logger.error("DB health check failed: %s", e)
+        return {
+            "connected": False,
+            "counts": {"projects": 0, "skills": 0, "roles": 0, "certifications": 0},
+            "message": f"Database connection failed: {type(e).__name__}: {str(e)[:200]}",
+            "needs_seed": False,
+        }
 
 
 # ===========================================================================
