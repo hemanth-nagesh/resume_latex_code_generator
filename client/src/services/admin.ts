@@ -25,6 +25,7 @@ export const getDbStatus = () => req('/db-status', 'GET') as Promise<{
   counts: Record<string, number>;
   message: string;
   needs_seed: boolean;
+  query_errors?: Record<string, string | null>;
 }>;
 
 // Skills

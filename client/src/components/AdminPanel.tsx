@@ -16,6 +16,7 @@ interface DbStatus {
   counts: Record<string, number>;
   message: string;
   needs_seed: boolean;
+  query_errors?: Record<string, string | null>;
 }
 
 export default function AdminPanel() {
@@ -60,6 +61,23 @@ export default function AdminPanel() {
           <code style={{ display: 'block', margin: '8px 0 0', padding: '6px 10px', background: '#fef3c7', borderRadius: 4, fontSize: 12 }}>
             python -m server.db.seed
           </code>
+        </div>
+      )}
+
+      {!statusLoading && dbStatus && dbStatus.query_errors && Object.values(dbStatus.query_errors).some(Boolean) && (
+        <div style={{
+          background: '#fff7ed', border: '1px solid #fb923c', borderRadius: 8,
+          padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#9a3412',
+        }}>
+          <strong>Query errors detected</strong>
+          <p style={{ margin: '4px 0 0' }}>
+            The database is connected but queries are failing:
+          </p>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+            {Object.entries(dbStatus.query_errors).filter(([, v]) => v).map(([key, err]) => (
+              <li key={key}><strong>{key}:</strong> {err}</li>
+            ))}
+          </ul>
         </div>
       )}
 

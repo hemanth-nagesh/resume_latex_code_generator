@@ -57,5 +57,5 @@ services:
     volumes:
       - ./client/src:/app/src
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: http://server:8000
     restart: unless-stopped
