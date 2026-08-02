@@ -70,10 +70,6 @@ export default function App() {
     };
   }, [pdfObjectUrl]);
 
-  if (!unlocked) {
-    return <LoginPage onUnlock={() => setUnlocked(true)} />;
-  }
-
   const handleJdChange = useCallback(
     (text: string) => {
       setJdText(text);
@@ -84,6 +80,10 @@ export default function App() {
     },
     [sections, setJdText],
   );
+
+  if (!unlocked) {
+    return <LoginPage onUnlock={() => setUnlocked(true)} />;
+  }
 
   const handleGenerate = () => {
     if (!jdText.trim() || sections.length === 0) return;
