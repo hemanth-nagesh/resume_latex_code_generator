@@ -35,14 +35,23 @@ class DatabasePool:
 
     async def _ensure_pool(self) -> asyncpg.Pool:
         if self._pool is None:
+            import ssl as ssl_module
+            # Supabase and most managed Postgres providers require SSL.
+            # Create a context that requires SSL but doesn't verify the
+            # certificate (avoids CA cert issues in slim Docker images).
+            ctx = ssl_module.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl_module.CERT_NONE
+
             self._pool = await asyncpg.create_pool(
                 dsn=self._dsn,
                 min_size=self._min_size,
                 max_size=self._max_size,
                 command_timeout=30,
+                ssl=ctx,
             )
             _logger.info(
-                "Database pool created (min=%d, max=%d)",
+                "Database pool created (min=%d, max=%d, ssl=on)",
                 self._min_size,
                 self._max_size,
             )

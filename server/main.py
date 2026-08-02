@@ -79,7 +79,10 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         _logger.exception("Unhandled exception on %s %s", request.method, request.url)
         return JSONResponse(
             status_code=500,
-            content={"detail": "Internal server error", "type": type(exc).__name__},
+            content={
+                "detail": str(exc) or "Internal server error",
+                "type": type(exc).__name__,
+            },
         )
 
     # --- Health check ---
