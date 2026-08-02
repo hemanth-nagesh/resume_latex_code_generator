@@ -34,15 +34,30 @@ router = APIRouter(
 
 
 def _db_safe_read(default):
-    """Decorator: catch DB errors on GET endpoints, return default fallback."""
+    """Decorator: catch transient DB errors, re-raise configuration issues.
+
+    Returns the default fallback only for connection/timeout errors where
+    the database is genuinely unavailable. Re-raises configuration,
+    authentication, and schema errors so they surface as 500s — those
+    should never be silently swallowed.
+    """
     def deco(fn):
         @wraps(fn)
         async def wrapper(*args, **kwargs):
             try:
                 return await fn(*args, **kwargs)
             except Exception as e:
-                _logger.warning("DB unavailable on %s — returning fallback: %s", fn.__name__, e)
-                return default
+                error_str = str(e).lower()
+                # Transient: DB unreachable — fall back gracefully
+                if any(kw in error_str for kw in (
+                    "connection", "timeout", "cannot connect", "refused",
+                    "no route to host", "name resolution", "temporary failure",
+                )):
+                    _logger.warning("DB unavailable on %s — returning fallback: %s", fn.__name__, e)
+                    return default
+                # Permanent: misconfiguration — let it propagate as 500
+                _logger.error("DB misconfiguration on %s: %s", fn.__name__, e)
+                raise
         return wrapper
     return deco
 
