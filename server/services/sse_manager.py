@@ -25,6 +25,7 @@ from server.services.types import (
     NodeErrorEvent,
     PipelineErrorEvent,
     CompleteEvent,
+    ReviewPendingEvent,
     HeartbeatEvent,
     NodeId,
     SSEEventType,
@@ -169,6 +170,29 @@ class SSEEventManager:
             ),
         )
         self._pipeline_running[session_key] = False
+
+    async def emit_review_pending(
+        self,
+        session_key: str,
+        latex_source: str,
+        warnings: list[str] | None = None,
+    ) -> None:
+        """Emit after LaTeX is assembled and validated — pipeline pauses here
+        for human review before PDF compilation.
+
+        Does NOT set _pipeline_running to False — the session stays alive
+        waiting for the approve endpoint to trigger Run 2. Heartbeats
+        continue until the user approves or the SESSION_TTL expires."""
+        await self._emit(
+            session_key,
+            ReviewPendingEvent(
+                event=SSEEventType.REVIEW_PENDING,
+                session_key=session_key,
+                timestamp=_now_iso(),
+                latex_source=latex_source,
+                warnings=warnings or [],
+            ),
+        )
 
     async def emit_pipeline_error(
         self,

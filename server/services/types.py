@@ -50,6 +50,7 @@ class SSEEventType(StrEnum):
     NODE_ERROR = "node_error"
     COMPLETE = "complete"
     PIPELINE_ERROR = "pipeline_error"
+    REVIEW_PENDING = "review_pending"
     HEARTBEAT = "heartbeat"
 
 
@@ -97,6 +98,13 @@ class PipelineErrorEvent(SSEEvent):
     """Emitted when the pipeline fails entirely — no LaTeX generated."""
     error: str
     failed_node: NodeId
+
+
+class ReviewPendingEvent(SSEEvent):
+    """Emitted after LaTeX is assembled and validated, before PDF compilation.
+    Contains the LaTeX source for the user to review and edit."""
+    latex_source: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 class HeartbeatEvent(SSEEvent):
@@ -210,8 +218,6 @@ class SelectedProject(ScoredProject):
 
 class SectionConfig(BaseModel):
     name: str
-    max_count: int | None = None  # projects only
-    matched_only: bool | None = None  # experience only
 
     @field_validator("name")
     @classmethod

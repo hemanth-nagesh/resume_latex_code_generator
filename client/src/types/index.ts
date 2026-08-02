@@ -47,8 +47,6 @@ export interface Role {
 
 export interface SectionConfig {
   name: 'summary' | 'experience' | 'projects' | 'skills';
-  max_count?: number;
-  matched_only?: boolean;
 }
 
 export interface GenerateRequest {
@@ -84,6 +82,7 @@ export type SSEEventType =
   | 'node_error'
   | 'complete'
   | 'pipeline_error'
+  | 'review_pending'
   | 'heartbeat';
 
 export interface SSEEvent {
@@ -111,6 +110,11 @@ export interface CompleteEvent extends SSEEvent {
   latex_source: string;
   filename: string;
   pdf_base64?: string;
+  warnings: string[];
+}
+
+export interface ReviewPendingEvent extends SSEEvent {
+  latex_source: string;
   warnings: string[];
 }
 

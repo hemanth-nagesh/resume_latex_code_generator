@@ -3,7 +3,7 @@
 Request body:
 {
     "jd_text": "...",
-    "sections": [{"name": "summary"}, {"name": "projects", "max_count": 3}],
+    "sections": [{"name": "summary"}, {"name": "projects"}],
     "session_key": null  // computed client-side via SHA-256 if omitted
 }
 
@@ -11,8 +11,11 @@ Flow:
 1. Validate JD text (100–15000 chars)
 2. Compute/resolve session key
 3. Create SSE session queue
-4. Start LangGraph in background task
+4. Start LangGraph in background task (Run 1: N1→N9 → review_pending)
 5. Return { session_key, session_id } immediately → client opens SSE stream
+
+After user reviews and approves the LaTeX, POST /api/review/approve triggers
+Run 2: PDF compilation via N10→N12.
 """
 
 from __future__ import annotations
@@ -42,8 +45,6 @@ router = APIRouter(tags=["generate"])
 
 class SectionInput(BaseModel):
     name: str
-    max_count: int | None = None
-    matched_only: bool | None = None
 
 
 class GenerateRequest(BaseModel):
@@ -51,8 +52,8 @@ class GenerateRequest(BaseModel):
     sections: list[SectionInput] = Field(
         default_factory=lambda: [
             SectionInput(name="summary"),
-            SectionInput(name="experience", matched_only=True),
-            SectionInput(name="projects", max_count=3),
+            SectionInput(name="experience"),
+            SectionInput(name="projects"),
             SectionInput(name="skills"),
         ]
     )
@@ -64,8 +65,18 @@ class GenerateResponse(BaseModel):
     session_id: str
 
 
+class ApproveRequest(BaseModel):
+    session_key: str
+    latex_source: str = Field(..., min_length=100)
+
+
+class ApproveResponse(BaseModel):
+    status: str
+    session_key: str
+
+
 # ---------------------------------------------------------------------------
-# Endpoint
+# Endpoints
 # ---------------------------------------------------------------------------
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -118,8 +129,39 @@ async def generate(
     return GenerateResponse(session_key=session_key, session_id=session_id)
 
 
+@router.post("/review/approve", response_model=ApproveResponse)
+async def approve_review(
+    body: ApproveRequest,
+    request: Request,
+) -> ApproveResponse:
+    """Receive user-edited LaTeX and compile to PDF (Run 2: N10→N12)."""
+    container: Container = request.app.state.container
+    sse_manager = get_sse_manager()
+
+    # Re-validate the user-edited LaTeX
+    from server.graph.n9_validator import _run_validation_checks
+    errors = await _run_validation_checks(body.latex_source)
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail=f"LaTeX validation failed: {'; '.join(errors[:3])}",
+        )
+
+    # Launch PDF compilation in background
+    asyncio.create_task(
+        _compile_approved_latex(
+            container=container,
+            sse_manager=sse_manager,
+            session_key=body.session_key,
+            latex_source=body.latex_source,
+        )
+    )
+
+    return ApproveResponse(status="compiling", session_key=body.session_key)
+
+
 # ---------------------------------------------------------------------------
-# Pipeline runner (background task)
+# Pipeline runner — Run 1: N1 → N9 (stops at review_pending)
 # ---------------------------------------------------------------------------
 
 async def _run_pipeline(
@@ -129,37 +171,43 @@ async def _run_pipeline(
     sse_manager: SSEEventManager,
     session_key: str,
 ) -> None:
-    """Run the LangGraph pipeline and emit SSE events for each node transition."""
+    """Run LangGraph N1→N9, then emit review_pending for human approval."""
     try:
         config = {"configurable": {"thread_id": session_key}}
 
         last_result = initial_state
         async for event in graph.astream(initial_state, config, stream_mode="updates"):
-            # event is dict[str, Any] — node_name → output dict
             for node_name, node_output in event.items():
                 node_id = _to_node_id(node_name)
+
+                # Stop before N10 — we pause for human review instead
+                if node_id == NodeId.PDF_COMPILER:
+                    continue
+
                 await sse_manager.emit_node_start(session_key, node_id)
                 t0 = time.monotonic()
 
-                # The actual work was already done — astream yields after completion
                 elapsed = int((time.monotonic() - t0) * 1000)
                 await sse_manager.emit_node_complete(session_key, node_id, elapsed)
 
-                # Accumulate state
                 if isinstance(node_output, dict):
                     last_result = {**last_result, **node_output}
 
-        # --- Emit completion ---
+        # Emit review_pending — frontend shows editable LaTeX
         latex_source = last_result.get("latex_source", "")
-        filename = last_result.get("latex_filename", "resume.tex")
-        pdf_base64 = last_result.get("pdf_base64", "")
         warnings = last_result.get("warnings", [])
 
-        await sse_manager.emit_complete(
+        if not latex_source:
+            await sse_manager.emit_pipeline_error(
+                session_key=session_key,
+                error="No LaTeX was generated",
+                failed_node=NodeId.RESPONSE_BUILDER,
+            )
+            return
+
+        await sse_manager.emit_review_pending(
             session_key=session_key,
             latex_source=latex_source,
-            filename=filename,
-            pdf_base64=pdf_base64,
             warnings=warnings,
         )
 
@@ -171,8 +219,54 @@ async def _run_pipeline(
             failed_node=NodeId.RESPONSE_BUILDER,
         )
 
+    # Do NOT remove session — the SSE connection stays alive waiting for
+    # the approve endpoint to trigger Run 2.
+
+
+# ---------------------------------------------------------------------------
+# Run 2: PDF compilation (triggered by approve endpoint)
+# ---------------------------------------------------------------------------
+
+async def _compile_approved_latex(
+    container: Container,
+    sse_manager: SSEEventManager,
+    session_key: str,
+    latex_source: str,
+) -> None:
+    """Compile the user-approved LaTeX to PDF and emit complete via SSE."""
+    try:
+        filename = f"resume_{session_key[:8]}.tex"
+
+        result = await container.pdf_service.compile_and_prepare(
+            latex_source=latex_source,
+            filename=filename,
+            sections_output=[],
+            session_key=session_key,
+            jd_profile={},
+            selected_projects=[],
+            selected_roles=[],
+            covered_skills=[],
+            uncovered_skills=[],
+            db=container.db,
+        )
+
+        await sse_manager.emit_complete(
+            session_key=session_key,
+            latex_source=latex_source,
+            filename=filename,
+            pdf_base64=result.pdf_base64,
+            warnings=result.warnings,
+        )
+
+    except Exception as exc:
+        _logger.exception("PDF compilation failed for session %s", session_key)
+        await sse_manager.emit_pipeline_error(
+            session_key=session_key,
+            error=str(exc),
+            failed_node=NodeId.PDF_COMPILER,
+        )
+
     finally:
-        # Schedule cleanup after a delay (let SSE connection finish reading)
         await asyncio.sleep(5)
         await sse_manager.remove_session(session_key)
 

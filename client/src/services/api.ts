@@ -15,6 +15,19 @@ export async function postGenerate(body: GenerateRequest): Promise<{ session_id:
   return res.json();
 }
 
+export async function postApprove(sessionKey: string, latexSource: string): Promise<{ status: string; session_key: string }> {
+  const res = await fetch(`${BASE_URL}/api/review/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_key: sessionKey, latex_source: latexSource }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || 'Approval failed');
+  }
+  return res.json();
+}
+
 export function openSSE(sessionId: string, onEvent: (event: unknown) => void): EventSource {
   const source = new EventSource(`${BASE_URL}/api/stream/${sessionId}`);
   
@@ -22,6 +35,7 @@ export function openSSE(sessionId: string, onEvent: (event: unknown) => void): E
   source.addEventListener('node_start', (e) => onEvent(parseJSON(e.data)));
   source.addEventListener('node_complete', (e) => onEvent(parseJSON(e.data)));
   source.addEventListener('node_error', (e) => onEvent(parseJSON(e.data)));
+  source.addEventListener('review_pending', (e) => onEvent(parseJSON(e.data)));
   source.addEventListener('complete', (e) => {
     onEvent(parseJSON(e.data));
     source.close();

@@ -40,7 +40,11 @@ export default function App() {
     draftLoaded, draftTimestamp, clearDraft,
   } = useCache();
 
-  const { isGenerating, nodeStatuses, error, latexOutput, pdfBase64, startGeneration, cancelGeneration } = useSSE();
+  const {
+    isGenerating, nodeStatuses, error, latexOutput, pdfBase64,
+    isInReview, reviewLatex,
+    startGeneration, cancelGeneration, approveLatex, resetReview,
+  } = useSSE();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [copied, setCopied] = useState(false);
   const [showSource, setShowSource] = useState(false);
@@ -155,7 +159,7 @@ export default function App() {
             const config = sections.find((s) => s.name === name);
             const checked = !!config;
             const label = name.charAt(0).toUpperCase() + name.slice(1);
-            const desc: Record<string, string> = { summary: '3-sentence professional profile', experience: 'Tailored role descriptions', projects: 'Best-matching project highlights', skills: 'Categorized technical skills' };
+            const desc: Record<string, string> = { summary: '3-sentence professional profile', experience: 'Tailored role descriptions', projects: 'All project highlights', skills: 'Categorized technical skills' };
             return (
               <label key={name} className={`section-checkbox ${checked ? 'on' : 'off'}`}>
                 <input type="checkbox" checked={checked} onChange={() => {
@@ -165,21 +169,6 @@ export default function App() {
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>{desc[name]}</div>
-                  {name === 'projects' && checked && (
-                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className="badge badge-slate">Max {config?.max_count ?? 4}</span>
-                      <input type="range" min={2} max={6} value={config?.max_count ?? 4}
-                        onChange={(e) => setSections(sections.map((s) => s.name === 'projects' ? { ...s, max_count: Number(e.target.value) } : s))}
-                        style={{ width: 80 }} />
-                    </div>
-                  )}
-                  {name === 'experience' && checked && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 12 }}>
-                      <input type="checkbox" checked={config?.matched_only ?? true}
-                        onChange={(e) => setSections(sections.map((s) => s.name === 'experience' ? { ...s, matched_only: e.target.checked } : s))} />
-                      Matched roles only
-                    </label>
-                  )}
                 </div>
               </label>
             );
@@ -232,8 +221,26 @@ export default function App() {
         </div>
       )}
 
-      {/* Output */}
-      {latexOutput && !isGenerating && (
+      {/* Review — editable LaTeX before PDF compilation */}
+      {isInReview && reviewLatex && (
+        <div className="latex-output">
+          <div className="latex-toolbar" style={{ borderColor: 'var(--accent)', background: 'var(--accent-light)' }}>
+            <span style={{ fontWeight: 600 }}>✏️ Review Your LaTeX — Edit if needed, then approve to compile PDF</span>
+          </div>
+          <ReviewEditor
+            latex={reviewLatex}
+            onApprove={approveLatex}
+            onRegenerate={() => {
+              cancelGeneration();
+              resetReview();
+              handleGenerate();
+            }}
+          />
+        </div>
+      )}
+
+      {/* Output — PDF + source */}
+      {!isInReview && latexOutput && !isGenerating && (
         <div className="latex-output">
           {pdfObjectUrl ? (
             <>
@@ -302,5 +309,60 @@ export default function App() {
       {/* Admin */}
       <AdminPanel />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Review Editor — editable LaTeX with Approve/Regenerate             */
+/* ------------------------------------------------------------------ */
+
+function ReviewEditor({
+  latex,
+  onApprove,
+  onRegenerate,
+}: {
+  latex: string;
+  onApprove: (edited: string) => void;
+  onRegenerate: () => void;
+}) {
+  const [edited, setEdited] = useState(latex);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(edited);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <>
+      <div className="latex-viewer" style={{ marginTop: 0 }}>
+        <div className="latex-viewer-header">
+          <span>resume.tex</span>
+          <span style={{ fontSize: 11, opacity: .6 }}>{edited.split('\n').length} lines</span>
+        </div>
+        <textarea
+          value={edited}
+          onChange={(e) => setEdited(e.target.value)}
+          rows={28}
+          style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+        <button className="btn btn-sm btn-ghost" onClick={handleCopy}>
+          {copied ? '✓ Copied' : '📋 Copy'}
+        </button>
+        <button className="btn btn-sm btn-ghost" onClick={onRegenerate}>
+          ↻ Regenerate
+        </button>
+        <button
+          className="btn btn-sm btn-primary"
+          onClick={() => onApprove(edited)}
+          disabled={!edited.trim()}
+        >
+          ✓ Approve & Generate PDF
+        </button>
+      </div>
+    </>
   );
 }

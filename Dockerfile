@@ -12,9 +12,11 @@ RUN npm run build
 FROM python:3.13-slim AS server
 WORKDIR /app
 
-# Install system deps (libpq for asyncpg)
+# Install system deps (libpq for asyncpg, ca-certificates for SSL to Supabase)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
+    ca-certificates \
+    openssl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY server/requirements.txt .

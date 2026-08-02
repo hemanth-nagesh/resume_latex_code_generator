@@ -1,9 +1,9 @@
 import { useState, useCallback, useRef } from 'react';
-import { openSSE, postGenerate } from '../services/api';
+import { openSSE, postGenerate, postApprove } from '../services/api';
 import { saveNodeOutput } from '../services/cache';
 import type {
   NodeId, SSEEvent, NodeStartEvent, NodeCompleteEvent,
-  NodeErrorEvent, CompleteEvent, PipelineErrorEvent, GenerateRequest,
+  NodeErrorEvent, CompleteEvent, ReviewPendingEvent, PipelineErrorEvent, GenerateRequest,
 } from '../types';
 
 interface UseSSEReturn {
@@ -12,8 +12,13 @@ interface UseSSEReturn {
   error: string | null;
   latexOutput: string | null;
   pdfBase64: string | null;
+  isInReview: boolean;
+  reviewLatex: string | null;
+  currentSessionKey: string | null;
   startGeneration: (request: GenerateRequest) => void;
   cancelGeneration: () => void;
+  approveLatex: (latex: string) => void;
+  resetReview: () => void;
 }
 
 export function useSSE(): UseSSEReturn {
@@ -24,6 +29,9 @@ export function useSSE(): UseSSEReturn {
   const [error, setError] = useState<string | null>(null);
   const [latexOutput, setLatexOutput] = useState<string | null>(null);
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
+  const [isInReview, setIsInReview] = useState(false);
+  const [reviewLatex, setReviewLatex] = useState<string | null>(null);
+  const [currentSessionKey, setCurrentSessionKey] = useState<string | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
 
   const startGeneration = useCallback(async (request: GenerateRequest) => {
@@ -31,11 +39,14 @@ export function useSSE(): UseSSEReturn {
     setError(null);
     setLatexOutput(null);
     setPdfBase64(null);
+    setIsInReview(false);
+    setReviewLatex(null);
     const newStatuses = new Map<NodeId, 'pending' | 'running' | 'completed' | 'failed'>();
     setNodeStatuses(newStatuses);
 
     try {
       const { session_id, session_key } = await postGenerate(request);
+      setCurrentSessionKey(session_key);
 
       const source = openSSE(session_id, (rawEvent) => {
         const event = rawEvent as SSEEvent;
@@ -54,6 +65,12 @@ export function useSSE(): UseSSEReturn {
           newStatuses.set(e.node, 'failed');
           setNodeStatuses(new Map(newStatuses));
           setError(`${e.node}: ${e.error}`);
+        } else if (event.event === 'review_pending') {
+          const e = rawEvent as ReviewPendingEvent;
+          setReviewLatex(e.latex_source);
+          setIsInReview(true);
+          setLatexOutput(e.latex_source);
+          setIsGenerating(false);
         } else if (event.event === 'complete') {
           const e = rawEvent as CompleteEvent;
           if (!e.latex_source) {
@@ -63,11 +80,13 @@ export function useSSE(): UseSSEReturn {
           }
           setLatexOutput(e.latex_source);
           setPdfBase64(e.pdf_base64 || null);
+          setIsInReview(false);
           setIsGenerating(false);
         } else if (event.event === 'pipeline_error') {
           const e = rawEvent as PipelineErrorEvent;
           setError(`Pipeline failed at ${e.failed_node}: ${e.error}`);
           setIsGenerating(false);
+          setIsInReview(false);
         }
       });
 
@@ -82,8 +101,35 @@ export function useSSE(): UseSSEReturn {
     sourceRef.current?.close();
     sourceRef.current = null;
     setIsGenerating(false);
+    setIsInReview(false);
   }, []);
 
-  return { isGenerating, nodeStatuses, error, latexOutput, pdfBase64, startGeneration, cancelGeneration };
+  const approveLatex = useCallback(async (latex: string) => {
+    if (!currentSessionKey) return;
+    setIsGenerating(true);
+    setError(null);
+    setIsInReview(false);
+
+    try {
+      await postApprove(currentSessionKey, latex);
+      // SSE connection stays open — complete event will arrive
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'PDF compilation failed');
+      setIsGenerating(false);
+    }
+  }, [currentSessionKey]);
+
+  const resetReview = useCallback(() => {
+    setIsInReview(false);
+    setReviewLatex(null);
+    setLatexOutput(null);
+    setPdfBase64(null);
+  }, []);
+
+  return {
+    isGenerating, nodeStatuses, error, latexOutput, pdfBase64,
+    isInReview, reviewLatex, currentSessionKey,
+    startGeneration, cancelGeneration, approveLatex, resetReview,
+  };
 }
 
