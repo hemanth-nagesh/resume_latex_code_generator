@@ -136,7 +136,8 @@ def _register_nodes(graph: StateGraph, container: Container) -> None:
     async def _n6(state: ResumeState) -> ResumeState:
         return await n6_selector.run(state)
 
-    # N7a-N7d: gemini — Calls 2-5 (rotated per key)
+    # N7a-N7c: gemini — Calls 2-4 (rotated per key)
+    # N7d: deterministic — no LLM call (pure skill categorization + formatting)
     async def _n7a(state: ResumeState) -> ResumeState:
         return await n7a_summary.run(state, gemini=container.gemini_for(2))
 
@@ -147,7 +148,7 @@ def _register_nodes(graph: StateGraph, container: Container) -> None:
         return await n7c_projects.run(state, gemini=container.gemini_for(4))
 
     async def _n7d(state: ResumeState) -> ResumeState:
-        return await n7d_skills.run(state, gemini=container.gemini_for(5))
+        return await n7d_skills.run(state)
 
     # N8: template (loaded from local file, cached in container)
     async def _n8(state: ResumeState) -> ResumeState:
