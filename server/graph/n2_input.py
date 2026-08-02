@@ -27,12 +27,12 @@ MAX_JD_CHARS = 15_000
 # Approximate characters-per-token for LLMs
 CHARS_PER_TOKEN = 4
 
-# Default sections — all enabled with sensible defaults
+# Default sections — all enabled
 DEFAULT_SECTIONS = [
-    SectionConfig(name="summary", max_count=None, matched_only=None),
-    SectionConfig(name="experience", max_count=None, matched_only=True),
-    SectionConfig(name="projects", max_count=3, matched_only=False),
-    SectionConfig(name="skills", max_count=None, matched_only=False),
+    SectionConfig(name="summary"),
+    SectionConfig(name="experience"),
+    SectionConfig(name="projects"),
+    SectionConfig(name="skills"),
 ]
 
 _HTML_TAG_RE = re.compile(r"<[^>]*>")

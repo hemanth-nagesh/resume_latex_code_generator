@@ -230,7 +230,7 @@ class TestN2InputParser:
         assert result["char_count"] >= 100
         assert result["estimated_tokens"] > 0
         assert len(result["sections"]) == 4
-        assert any(s.name == "projects" and s.max_count == 3 for s in result["sections"])
+        assert any(s.name == "projects" for s in result["sections"])
 
     async def test_too_short_jd(self):
         state = {"jd_raw": "Python dev"}
@@ -333,13 +333,11 @@ class TestN5N6Integration:
             "kg_snapshot": kg,
             "jd_profile": jd_profile,
             "ranked_projects": state_n5["ranked_projects"],
-            "sections": [{"name": "projects", "max_count": 3}],
         }
         result = await n6_selector.run(state)
 
         selected = result["selected_projects"]
         assert len(selected) >= 1
-        assert len(selected) <= 3
         assert len(result["covered_skills"]) >= 1
         assert len(result["selected_roles"]) >= 0
         assert len(result["selected_skills_ordered"]) >= 1

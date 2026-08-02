@@ -20,8 +20,8 @@ export function useCache(): UseCacheReturn {
   const [jdText, setJdTextRaw] = useState('');
   const [sections, setSectionsRaw] = useState<SectionConfig[]>([
     { name: 'summary' },
-    { name: 'experience', matched_only: true },
-    { name: 'projects', max_count: 4 },
+    { name: 'experience' },
+    { name: 'projects' },
     { name: 'skills' },
   ]);
   const [sessionKey, setSessionKey] = useState('');
